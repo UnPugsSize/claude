@@ -14,6 +14,7 @@ let marriages = {};
 let pets = {};
 let warnings = {};
 let automodConfig = {};
+let botData = {};
 const startTime = Date.now();
 
 function loadData() {
@@ -27,6 +28,7 @@ function loadData() {
         if (fs.existsSync('./warnings.json')) warnings = JSON.parse(fs.readFileSync('./warnings.json', 'utf8'));
         if (fs.existsSync('./automod.json')) automodConfig = JSON.parse(fs.readFileSync('./automod.json', 'utf8'));
         if (fs.existsSync('./botData.json')) botData = JSON.parse(fs.readFileSync('./botData.json', 'utf8'));
+        if (fs.existsSync('./gameStates.json')) gameStates = JSON.parse(fs.readFileSync('./gameStates.json', 'utf8'));
     } catch (err) {
         console.log('⚠️ Errore caricamento dati:', err);
     }
@@ -42,6 +44,8 @@ function saveData() {
         fs.writeFileSync('./pets.json', JSON.stringify(pets, null, 2));
         fs.writeFileSync('./warnings.json', JSON.stringify(warnings, null, 2));
         fs.writeFileSync('./automod.json', JSON.stringify(automodConfig, null, 2));
+        fs.writeFileSync('./gameStates.json', JSON.stringify(gameStates, null, 2));
+        fs.writeFileSync('./botData.json', JSON.stringify(botData, null, 2));
     } catch (err) {
         console.log('⚠️ Errore salvataggio dati:', err);
     }
@@ -212,23 +216,54 @@ async function isBotAdmin(chat) {
   try {
     if (!chat || !chat.isGroup) return false;
 
-    // Ottieni id del bot in modo sicuro
-    const botRaw = (client && client.info && (client.info.me?._serialized || client.info.wid?._serialized)) || '';
-    const botId = (botRaw || '').split('@')[0];
-    if (!botId) return false;
+    // Ottieni l'ID del bot in modo più affidabile
+    let botId = '';
+    
+    // Prova diversi metodi per ottenere l'ID del bot
+    if (client.info && client.info.wid) {
+      botId = client.info.wid._serialized || client.info.wid.user || '';
+    } else if (client.info && client.info.me) {
+      botId = client.info.me._serialized || client.info.me.user || '';
+    }
+    
+    // Se non otteniamo l'ID completo, proviamo ad estrarre solo il numero
+    const botNumber = botId.split('@')[0];
+    
+    if (!botNumber) {
+      console.log('⚠️ Impossibile ottenere ID bot');
+      return false;
+    }
 
-    // La lista dei partecipanti potrebbe essere già presente su `chat`, altrimenti cogliamo freshChat
-    const targetChat = chat.participants && Array.isArray(chat.participants) ? chat : await client.getChatById(chat.id._serialized);
-    if (!targetChat || !Array.isArray(targetChat.participants)) return false;
+    // Ottieni la chat aggiornata con i partecipanti
+    const freshChat = await client.getChatById(chat.id._serialized);
+    
+    if (!freshChat || !Array.isArray(freshChat.participants)) {
+      console.log('⚠️ Impossibile ottenere partecipanti del gruppo');
+      return false;
+    }
 
-    const participant = targetChat.participants.find(p => {
-      const pIdRaw = p && p.id && p.id._serialized ? p.id._serialized : '';
-      return (pIdRaw || '').split('@')[0] === botId;
+    // Cerca il bot tra i partecipanti
+    const botParticipant = freshChat.participants.find(p => {
+      if (!p || !p.id || !p.id._serialized) return false;
+      const participantNumber = p.id._serialized.split('@')[0];
+      return participantNumber === botNumber;
     });
 
-    return Boolean(participant && (participant.isAdmin === true || participant.isSuperAdmin === true));
+    if (!botParticipant) {
+      console.log('⚠️ Bot non trovato tra i partecipanti');
+      return false;
+    }
+
+    // Verifica se il bot è admin o super admin
+    const isAdminStatus = botParticipant.isAdmin === true || botParticipant.isSuperAdmin === true;
+    
+    // Debug log (rimuovi in produzione)
+    console.log(`Bot admin status in ${chat.name}: ${isAdminStatus}`);
+    
+    return isAdminStatus;
+
   } catch (err) {
-    console.error('isBotAdmin error:', err);
+    console.error('❌ isBotAdmin error:', err.message);
     return false;
   }
 }
@@ -284,50 +319,62 @@ client.on('message', async (msg) => {
             }
         }
 
-        // ---------------------- MODERAZIONE AUTOMATICA ----------------------
-        if (isGroup && groupInfo) {
-            // Utenti mutati
-            if (groupInfo.mutedUsers.includes(userNumber)) {
-                try { 
-                    await msg.delete(true); 
-                    return;
-                } catch {}
-            }
+        // Utenti mutati - controlla sia numero che ID completo
+const isMuted = groupInfo.mutedUsers.some(id => 
+    id === userId || id.split('@')[0] === userNumber
+);
+if (isMuted) {
+    try { 
+        await msg.delete(true); 
+        return;
+    } catch (err) {
+        console.log('Errore eliminazione messaggio mutato:', err);
+    }
+}
 
-            // Utenti bannati
-            if (groupInfo.bannedUsers.includes(userNumber)) {
-                if (await isBotAdmin(chat)) {
-                    try { 
-                        await chat.removeParticipants([msg.author]); 
-                        return;
-                    } catch {}
-                }
-            }
+// Utenti bannati
+const isBanned = groupInfo.bannedUsers.some(id => 
+    id === userId || id.split('@')[0] === userNumber
+);
+if (isBanned) {
+    if (await isBotAdmin(chat)) {
+        try { 
+            await chat.removeParticipants([msg.author]); 
+            return;
+        } catch (err) {
+            console.log('Errore rimozione utente bannato:', err);
+        }
+    }
+}
 
-            // Anti-link
-            if (groupInfo.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
-                if (!(await isAdmin(msg, chat))) {
-                    try { 
-                        await msg.delete(true); 
-                        await msg.reply('⚠️🔗 *ANTILINK ATTIVO*\n\nI link non sono permessi in questo gruppo!');
-                        return;
-                    } catch {}
-                }
-            }
+// Anti-link
+if (groupInfo.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
+    if (!(await isAdmin(msg, chat))) {
+        try { 
+            await msg.delete(true); 
+            await msg.reply('⚠️🔗 *ANTILINK ATTIVO*\n\nI link non sono permessi in questo gruppo!');
+            return;
+        } catch (err) {
+            console.log('Errore antilink:', err);
+        }
+    }
+}
 
-            // Anti-bot
-            if (groupInfo.antiBot && msg.fromMe === false) {
-                const contact = await msg.getContact();
-                if (contact.isWAContact === false || contact.isBusiness) {
-                    if (!(await isAdmin(msg, chat))) {
-                        try {
-                            await chat.removeParticipants([msg.author]);
-                            await msg.reply('🤖❌ Bot rilevato e rimosso automaticamente!');
-                            return;
-                        } catch {}
-                    }
-                }
+// Anti-bot
+if (groupInfo.antiBot && msg.fromMe === false) {
+    const contact = await msg.getContact();
+    if (contact.isWAContact === false || contact.isBusiness) {
+        if (!(await isAdmin(msg, chat))) {
+            try {
+                await chat.removeParticipants([msg.author]);
+                await msg.reply('🤖❌ Bot rilevato e rimosso automaticamente!');
+                return;
+            } catch (err) {
+                console.log('Errore antibot:', err);
             }
+        }
+    }
+}
 
             // Slowmode
             if (groupInfo.slowmode > 0) {
@@ -424,7 +471,7 @@ if (['menu', 'help', 'comandi'].includes(command)) {
 
 ❓ *AIUTO:*
 • .help [comando] - Info comando
-• .info-bot - Info sul bot
+• .info - Info sul bot
 • .ping - Testa il bot
 
 💡 *SUGGERIMENTO:*
@@ -620,6 +667,9 @@ if (command === 'giochi' || command === 'games') {
 .tictactoe @user - Tris
 .impiccato - Impiccato
 .indovinachi - Indovina personaggio
+.creacoppia
+.ship (user1) (user2)
+.amore
 `;
   await msg.reply(gamesText);
   return;
@@ -654,211 +704,538 @@ if (command === 'fun' || command === 'divertimento') {
 
 
 
-        // ========== COMANDI MODERAZIONE ==========
+       // COMANDO: .tag
         else if (command === 'tag' || command === 'tagall') {
             if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            const messageText = args.join(' ').trim() || '📢 Attenzione a tutti!';
+            if (!await isAdmin()) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+            const messageText = args.join(' ').trim() || '📢 Attenzione!';
             const mentions = [];
+
+            // Raccogli tutti i contatti per le menzioni
             for (let participant of chat.participants) {
                 try {
                     const contact = await client.getContactById(participant.id._serialized);
                     mentions.push(contact);
-                } catch (e) {}
+                } catch (e) {
+                    // Se non riesce a ottenere il contatto, salta
+                    console.log('Impossibile ottenere contatto:', participant.id._serialized);
+                }
             }
+
+            // Invia SOLO il messaggio personalizzato, ma con le menzioni "invisibili"
+            // WhatsApp notificherà tutti anche senza gli @ visibili
             try {
                 await chat.sendMessage(messageText, { mentions });
             } catch (err) {
-                await msg.reply('❌ Errore durante il tag.');
+                console.error('Errore comando .tag:', err);
+                await msg.reply('❌ Errore durante il tag di tutti i membri.');
             }
         }
 
-        else if (command === 'hidetag') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            const text = args.join(' ') || '👻 Messaggio nascosto';
-            const mentions = chat.participants.map(p => p.id._serialized);
-            try {
-                await chat.sendMessage(text, { mentions });
-            } catch (err) {
-                await msg.reply('❌ Errore durante l\'invio.');
-            }
-        }
+// HIDETAG - Tag nascosto
+else if (command === 'hidetag') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    try {
+        const text = args.join(' ') || '👻 Messaggio nascosto';
+        const mentions = chat.participants.map(p => p.id._serialized);
+        
+        await chat.sendMessage(text, { mentions });
+        
+    } catch (err) {
+        console.error('Errore hidetag:', err);
+        await msg.reply('❌ Errore durante l\'invio del messaggio nascosto.');
+    }
+}
 
-        else if (command === 'ban') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da bannare!');
-            const toBanId = mentioned[0].id._serialized;
-            const toBanNumber = toBanId.split('@')[0];
-            initGroup(chat.id._serialized);
-            const alreadyBanned = groupData[chat.id._serialized].bannedUsers.some(id => id.split('@')[0] === toBanNumber);
-            if (!alreadyBanned) {
-                groupData[chat.id._serialized].bannedUsers.push(toBanId);
-                saveData();
-            }
-            try {
-                const freshChat = await client.getChatById(chat.id._serialized);
-                const participant = freshChat.participants.find(p => p.id._serialized.split('@')[0] === toBanNumber);
-                if (!participant) return msg.reply('❌ Utente non trovato nel gruppo!');
-                await chat.removeParticipants([participant.id._serialized]);
-                await msg.reply(`✅ 🚫 *${mentioned[0].pushname || mentioned[0].number}* è stato bannato dal gruppo!`);
-            } catch (err) {
-                await msg.reply('❌ Errore nel bannare l\'utente.');
-            }
+// BAN UTENTE
+else if (command === 'ban') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per bannare utenti!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da bannare!\n\n💡 Esempio: `.ban @utente`');
+    
+    try {
+        const toBanId = mentioned[0].id._serialized;
+        const toBanNumber = toBanId.split('@')[0];
+        const toBanName = mentioned[0].pushname || toBanNumber;
+        
+        initGroup(chat.id._serialized);
+        
+        // Verifica se già bannato
+        const alreadyBanned = groupData[chat.id._serialized].bannedUsers.some(
+            id => id.split('@')[0] === toBanNumber
+        );
+        
+        if (alreadyBanned) {
+            return msg.reply(`⚠️ *${toBanName}* è già bannato!`);
         }
-
-        else if (command === 'unban') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da sbannare!');
-            const toUnbanNumber = mentioned[0].id._serialized.split('@')[0];
-            initGroup(chat.id._serialized);
-            const idx = groupData[chat.id._serialized].bannedUsers.findIndex(id => id.split('@')[0] === toUnbanNumber);
-            if (idx !== -1) {
-                groupData[chat.id._serialized].bannedUsers.splice(idx, 1);
-                saveData();
-                await msg.reply(`✅ *${mentioned[0].pushname || mentioned[0].number}* è stato sbannato!`);
-            } else {
-                await msg.reply('⚠️ Questo utente non è bannato!');
-            }
+        
+        // Aggiungi alla lista ban
+        groupData[chat.id._serialized].bannedUsers.push(toBanId);
+        saveData();
+        
+        // Rimuovi dal gruppo
+        const freshChat = await client.getChatById(chat.id._serialized);
+        const participant = freshChat.participants.find(
+            p => p.id._serialized.split('@')[0] === toBanNumber
+        );
+        
+        if (!participant) {
+            return msg.reply('❌ Utente non trovato nel gruppo!');
         }
+        
+        await chat.removeParticipants([participant.id._serialized]);
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  🚫 *UTENTE BANNATO*  ║
+╚═══════════════════════╝
 
-        else if (command === 'kick' || command === 'remove') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente!');
-            const toKickNumber = mentioned[0].id._serialized.split('@')[0];
-            try {
-                const freshChat = await client.getChatById(chat.id._serialized);
-                const participant = freshChat.participants.find(p => p.id._serialized.split('@')[0] === toKickNumber);
-                if (!participant) return msg.reply('❌ Utente non trovato!');
-                await chat.removeParticipants([participant.id._serialized]);
-                await msg.reply(`✅ 👢 *${mentioned[0].pushname || mentioned[0].number}* rimosso dal gruppo!`);
-            } catch (err) {
-                await msg.reply('❌ Errore rimozione.');
-            }
+👤 Utente: *${toBanName}*
+📱 Numero: ${toBanNumber}
+⚠️ Status: *BANNATO PERMANENTEMENTE*
+
+━━━━━━━━━━━━━━━━━━━━━
+Se tenta di rientrare sarà rimosso automaticamente.`
+        );
+        
+    } catch (err) {
+        console.error('Errore ban:', err);
+        await msg.reply('❌ Errore nel bannare l\'utente. Verifica che il bot sia admin.');
+    }
+}
+
+// UNBAN UTENTE
+else if (command === 'unban') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da sbannare!\n\n💡 Esempio: `.unban @utente`');
+    
+    try {
+        const toUnbanNumber = mentioned[0].id._serialized.split('@')[0];
+        const toUnbanName = mentioned[0].pushname || toUnbanNumber;
+        
+        initGroup(chat.id._serialized);
+        const idx = groupData[chat.id._serialized].bannedUsers.findIndex(
+            id => id.split('@')[0] === toUnbanNumber
+        );
+        
+        if (idx === -1) {
+            return msg.reply(`⚠️ *${toUnbanName}* non è bannato!`);
         }
+        
+        groupData[chat.id._serialized].bannedUsers.splice(idx, 1);
+        saveData();
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  ✅ *UTENTE SBANNATO* ║
+╚═══════════════════════╝
 
-        else if (command === 'muta' || command === 'mute') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona utente!');
-            const toMuteNumber = mentioned[0].id._serialized.split('@')[0];
-            const muteTime = parseInt(args[args.length - 1]);
-            initGroup(chat.id._serialized);
-            const alreadyMuted = groupData[chat.id._serialized].mutedUsers.some(id => id.split('@')[0] === toMuteNumber);
-            if (!alreadyMuted) {
-                groupData[chat.id._serialized].mutedUsers.push(mentioned[0].id._serialized);
-                if (!isNaN(muteTime) && muteTime > 0) {
-                    setTimeout(() => {
-                        const idx = groupData[chat.id._serialized].mutedUsers.findIndex(id => id.split('@')[0] === toMuteNumber);
-                        if (idx !== -1) {
-                            groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
-                            saveData();
-                            msg.reply(`🔊 *${mentioned[0].pushname || mentioned[0].number}* è stato automaticamente smutato!`);
-                        }
-                    }, muteTime * 60 * 1000);
-                }
-                saveData();
-                await msg.reply(`🔇 *${mentioned[0].pushname || mentioned[0].number}* mutato!${!isNaN(muteTime) ? ` (${muteTime} minuti)` : ''}`);
-            } else {
-                await msg.reply('⚠️ Utente già mutato!');
-            }
+👤 Utente: *${toUnbanName}*
+📱 Numero: ${toUnbanNumber}
+✨ Status: *BAN RIMOSSO*
+
+━━━━━━━━━━━━━━━━━━━━━
+L'utente può ora rientrare nel gruppo.`
+        );
+        
+    } catch (err) {
+        console.error('Errore unban:', err);
+        await msg.reply('❌ Errore durante lo sbannamento.');
+    }
+}
+
+// KICK UTENTE
+else if (command === 'kick' || command === 'remove') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rimuovere utenti!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da rimuovere!\n\n💡 Esempio: `.kick @utente`');
+    
+    try {
+        const toKickNumber = mentioned[0].id._serialized.split('@')[0];
+        const toKickName = mentioned[0].pushname || toKickNumber;
+        
+        const freshChat = await client.getChatById(chat.id._serialized);
+        const participant = freshChat.participants.find(
+            p => p.id._serialized.split('@')[0] === toKickNumber
+        );
+        
+        if (!participant) {
+            return msg.reply('❌ Utente non trovato nel gruppo!');
         }
+        
+        await chat.removeParticipants([participant.id._serialized]);
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  👢 *UTENTE RIMOSSO*  ║
+╚═══════════════════════╝
 
-        else if (command === 'smuta' || command === 'unmute') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona utente!');
-            const toUnmuteNumber = mentioned[0].id._serialized.split('@')[0];
-            initGroup(chat.id._serialized);
-            const idx = groupData[chat.id._serialized].mutedUsers.findIndex(id => id.split('@')[0] === toUnmuteNumber);
-            if (idx !== -1) {
-                groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
-                saveData();
-                await msg.reply(`🔊 *${mentioned[0].pushname || mentioned[0].number}* smutato!`);
-            } else {
-                await msg.reply('⚠️ Utente non mutato!');
-            }
+👤 Utente: *${toKickName}*
+📱 Numero: ${toKickNumber}
+
+━━━━━━━━━━━━━━━━━━━━━
+L'utente è stato espulso dal gruppo.`
+        );
+        
+    } catch (err) {
+        console.error('Errore kick:', err);
+        await msg.reply('❌ Errore durante la rimozione. Verifica che il bot sia admin.');
+    }
+}
+
+// MUTA UTENTE (con sistema migliorato)
+else if (command === 'muta' || command === 'mute') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per eliminare messaggi!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ Menziona un utente da mutare!\n\n' +
+            '💡 *Esempi:*\n' +
+            '• `.muta @utente` - Mute permanente\n' +
+            '• `.muta @utente 30` - Mute per 30 minuti'
+        );
+    }
+    
+    try {
+        const toMuteId = mentioned[0].id._serialized;
+        const toMuteNumber = toMuteId.split('@')[0];
+        const toMuteName = mentioned[0].pushname || toMuteNumber;
+        const muteTime = parseInt(args[args.length - 1]);
+        
+        initGroup(chat.id._serialized);
+        
+        // Verifica se già mutato
+        const alreadyMuted = groupData[chat.id._serialized].mutedUsers.some(
+            id => id === toMuteId || id.split('@')[0] === toMuteNumber
+        );
+        
+        if (alreadyMuted) {
+            return msg.reply(`⚠️ *${toMuteName}* è già mutato!`);
         }
-
-        else if (command === 'warn') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona utente!');
-            const userId = mentioned[0].id._serialized;
-            const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
-            initGroup(chat.id._serialized);
-            const g = groupData[chat.id._serialized];
-            g.warnings[userId] = (g.warnings[userId] || 0) + 1;
-            saveData();
-            const warnCount = g.warnings[userId];
-            await msg.reply(`⚠️ *${mentioned[0].pushname || mentioned[0].number}* avvisato!\n\n📋 Warn: *${warnCount}/${g.maxWarns}*\n💬 Motivo: ${reason}`);
-            if (warnCount >= g.maxWarns) {
+        
+        // Aggiungi alla lista mutati
+        groupData[chat.id._serialized].mutedUsers.push(toMuteId);
+        
+        // Gestione mute temporaneo
+        if (!isNaN(muteTime) && muteTime > 0) {
+            const unmuteTime = Date.now() + (muteTime * 60 * 1000);
+            
+            if (!groupData[chat.id._serialized].muteTime) {
+                groupData[chat.id._serialized].muteTime = {};
+            }
+            groupData[chat.id._serialized].muteTime[toMuteId] = unmuteTime;
+            
+            // Timeout per unmute automatico
+            setTimeout(async () => {
                 try {
-                    await chat.removeParticipants([userId]);
-                    await msg.reply(`🚫 *${mentioned[0].pushname || mentioned[0].number}* rimosso per troppi warn!`);
-                    delete g.warnings[userId];
-                    saveData();
-                } catch {}
+                    const idx = groupData[chat.id._serialized].mutedUsers.findIndex(
+                        id => id === toMuteId || id.split('@')[0] === toMuteNumber
+                    );
+                    if (idx !== -1) {
+                        groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
+                        delete groupData[chat.id._serialized].muteTime[toMuteId];
+                        saveData();
+                        
+                        await client.sendMessage(
+                            chat.id._serialized,
+                            `🔊 *${toMuteName}* è stato automaticamente smutato!`
+                        );
+                    }
+                } catch (err) {
+                    console.error('Errore unmute automatico:', err);
+                }
+            }, muteTime * 60 * 1000);
+            
+            saveData();
+            
+            await msg.reply(
+                `╔═══════════════════════╗
+║  🔇 *UTENTE MUTATO*   ║
+╚═══════════════════════╝
+
+👤 Utente: *${toMuteName}*
+📱 Numero: ${toMuteNumber}
+⏱️ Durata: *${muteTime} minuti*
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ Tutti i suoi messaggi saranno eliminati automaticamente.
+🔊 Sarà smutato automaticamente tra ${muteTime} minuti.`
+            );
+            
+        } else {
+            saveData();
+            
+            await msg.reply(
+                `╔═══════════════════════╗
+║  🔇 *UTENTE MUTATO*   ║
+╚═══════════════════════╝
+
+👤 Utente: *${toMuteName}*
+📱 Numero: ${toMuteNumber}
+⏱️ Durata: *PERMANENTE*
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ Tutti i suoi messaggi saranno eliminati automaticamente.
+💡 Usa \`.smuta @utente\` per rimuovere il mute.`
+            );
+        }
+        
+    } catch (err) {
+        console.error('Errore muta:', err);
+        await msg.reply('❌ Errore durante il mute. Verifica che il bot sia admin.');
+    }
+}
+
+// SMUTA UTENTE
+else if (command === 'smuta' || command === 'unmute') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da smutare!\n\n💡 Esempio: `.smuta @utente`');
+    
+    try {
+        const toUnmuteId = mentioned[0].id._serialized;
+        const toUnmuteNumber = toUnmuteId.split('@')[0];
+        const toUnmuteName = mentioned[0].pushname || toUnmuteNumber;
+        
+        initGroup(chat.id._serialized);
+        const idx = groupData[chat.id._serialized].mutedUsers.findIndex(
+            id => id === toUnmuteId || id.split('@')[0] === toUnmuteNumber
+        );
+        
+        if (idx === -1) {
+            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`);
+        }
+        
+        groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
+        
+        // Rimuovi anche il tempo se presente
+        if (groupData[chat.id._serialized].muteTime?.[toUnmuteId]) {
+            delete groupData[chat.id._serialized].muteTime[toUnmuteId];
+        }
+        
+        saveData();
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  🔊 *UTENTE SMUTATO*  ║
+╚═══════════════════════╝
+
+👤 Utente: *${toUnmuteName}*
+📱 Numero: ${toUnmuteNumber}
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ L'utente può ora scrivere liberamente.`
+        );
+        
+    } catch (err) {
+        console.error('Errore smuta:', err);
+        await msg.reply('❌ Errore durante lo smute.');
+    }
+}
+
+// WARN UTENTE
+else if (command === 'warn') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ Menziona un utente da avvisare!\n\n' +
+            '💡 *Esempio:*\n' +
+            '`.warn @utente Spam nel gruppo`'
+        );
+    }
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = mentioned[0].pushname || userId.split('@')[0];
+        const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        g.warnings[userId] = (g.warnings[userId] || 0) + 1;
+        saveData();
+        
+        const warnCount = g.warnings[userId];
+        const maxWarns = g.maxWarns || 3;
+        
+        // Calcola barra di avanzamento warns
+        const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  ⚠️ *WARNING ISSUED*  ║
+╚═══════════════════════╝
+
+👤 Utente: *${userName}*
+📊 Warn: *${warnCount}/${maxWarns}*
+${progressBar}
+
+💬 *Motivo:*
+${reason}
+
+━━━━━━━━━━━━━━━━━━━━━
+${warnCount >= maxWarns ? '🚨 LIMITE RAGGIUNTO! Utente verrà rimosso.' : `⚠️ Ancora ${maxWarns - warnCount} warn prima della rimozione.`}`
+        );
+        
+        // Auto-kick se raggiunto il limite
+        if (warnCount >= maxWarns) {
+            try {
+                await chat.removeParticipants([userId]);
+                await msg.reply(`🚫 *${userName}* è stato rimosso per troppi warning!`);
+                delete g.warnings[userId];
+                saveData();
+            } catch (err) {
+                console.error('Errore auto-kick:', err);
             }
         }
+        
+    } catch (err) {
+        console.error('Errore warn:', err);
+        await msg.reply('❌ Errore durante l\'invio del warning.');
+    }
+}
 
-        else if (command === 'unwarn') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona utente!');
-            const userId = mentioned[0].id._serialized;
-            initGroup(chat.id._serialized);
-            const g = groupData[chat.id._serialized];
-            if (!g.warnings[userId] || g.warnings[userId] === 0) {
-                return msg.reply(`⚠️ *${mentioned[0].pushname || mentioned[0].number}* non ha warn!`);
-            }
-            g.warnings[userId]--;
-            saveData();
-            await msg.reply(`✅ Warn rimosso da *${mentioned[0].pushname || mentioned[0].number}*!\n\n📋 Warn rimanenti: *${g.warnings[userId]}/${g.maxWarns}*`);
+// UNWARN UTENTE
+else if (command === 'unwarn') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente!\n\n💡 Esempio: `.unwarn @utente`');
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = mentioned[0].pushname || userId.split('@')[0];
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        if (!g.warnings[userId] || g.warnings[userId] === 0) {
+            return msg.reply(`⚠️ *${userName}* non ha warning attivi!`);
         }
+        
+        g.warnings[userId]--;
+        saveData();
+        
+        const warnCount = g.warnings[userId];
+        const maxWarns = g.maxWarns || 3;
+        const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  ✅ *WARNING RIMOSSO* ║
+╚═══════════════════════╝
 
-        else if (command === 'warnings') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            const mentioned = await msg.getMentions();
-            const targetId = mentioned.length > 0 ? mentioned[0].id._serialized : userId;
-            const targetName = mentioned.length > 0 ? (mentioned[0].pushname || mentioned[0].number) : 'Tu';
-            initGroup(chat.id._serialized);
-            const g = groupData[chat.id._serialized];
-            const warnCount = g.warnings[targetId] || 0;
-            await msg.reply(`📋 *WARNINGS*\n\n👤 Utente: ${targetName}\n⚠️ Warn: *${warnCount}/${g.maxWarns}*`);
-        }
+👤 Utente: *${userName}*
+📊 Warn: *${warnCount}/${maxWarns}*
+${progressBar}
 
-        else if (command === 'modoadmin') {
-            if (!isGroup) return;
-            if (!await isAdmin(msg, chat)) return;
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].adminMode = !groupData[chat.id._serialized].adminMode;
-            const stato = groupData[chat.id._serialized].adminMode ? 'attiva' : 'disattiva';
-            await msg.reply(`✅ Modalità admin ${stato} nel gruppo!`);
-        }    
+━━━━━━━━━━━━━━━━━━━━━
+Un warning è stato rimosso con successo.`
+        );
+        
+    } catch (err) {
+        console.error('Errore unwarn:', err);
+        await msg.reply('❌ Errore durante la rimozione del warning.');
+    }
+}
 
-        else if (command === 'clearwarns') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona utente!');
-            const userId = mentioned[0].id._serialized;
-            initGroup(chat.id._serialized);
-            const g = groupData[chat.id._serialized];
-            g.warnings[userId] = 0;
-            saveData();
-            await msg.reply(`✅ 🗑️ Tutti i warn di *${mentioned[0].pushname || mentioned[0].number}* sono stati cancellati!`);
-        }
+// VISUALIZZA WARNINGS
+else if (command === 'warnings') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    
+    const mentioned = await msg.getMentions();
+    const targetId = mentioned.length > 0 ? mentioned[0].id._serialized : userId;
+    const targetName = mentioned.length > 0 
+        ? (mentioned[0].pushname || mentioned[0].number) 
+        : 'Tu';
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    
+    const warnCount = g.warnings[targetId] || 0;
+    const maxWarns = g.maxWarns || 3;
+    const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
+    
+    let status = '';
+    if (warnCount === 0) status = '✅ Nessun warning';
+    else if (warnCount < maxWarns / 2) status = '⚠️ Attenzione';
+    else if (warnCount < maxWarns) status = '🚨 Pericolo';
+    else status = '🔴 Critico';
+    
+    await msg.reply(
+        `╔═══════════════════════╗
+║  📋 *WARNINGS*        ║
+╚═══════════════════════╝
+
+👤 Utente: *${targetName}*
+📊 Warn: *${warnCount}/${maxWarns}*
+${progressBar}
+
+📌 Status: ${status}
+
+━━━━━━━━━━━━━━━━━━━━━
+${warnCount >= maxWarns ? '⚠️ Limite raggiunto! Prossimo warn = kick' : `💡 Ancora ${maxWarns - warnCount} warn disponibili`}`
+    );
+}
+
+// CLEAR WARNINGS
+else if (command === 'clearwarns') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente!\n\n💡 Esempio: `.clearwarns @utente`');
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = mentioned[0].pushname || userId.split('@')[0];
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        const previousWarns = g.warnings[userId] || 0;
+        g.warnings[userId] = 0;
+        saveData();
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  🗑️ *WARNS CANCELLATI*║
+╚═══════════════════════╝
+
+👤 Utente: *${userName}*
+📊 Warn precedenti: *${previousWarns}*
+✨ Warn attuali: *0*
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ Tutti i warning sono stati rimossi!`
+        );
+        
+    } catch (err) {
+        console.error('Errore clearwarns:', err);
+        await msg.reply('❌ Errore durante la cancellazione dei warning.');
+    }
+}
 
         else if (command === 'antilink') {
             if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
@@ -1486,7 +1863,7 @@ if (command === 'fun' || command === 'divertimento') {
             await msg.reply(`⏰ Uptime: *${formatTime(Math.floor((Date.now() - startTime) / 1000))}*`);
         }
 
-        else if (command === 'info-bot' || command === 'infobot') {
+        else if (command === 'info' || command === 'infobot') {
             const memUsage = process.memoryUsage();
             const text = `🤖 *INFO BOT*\n\nVersione: 2.0 Premium\nUptime: ${formatTime(Math.floor((Date.now() - startTime) / 1000))}\nMemoria (rss): ${Math.round(memUsage.rss / 1024 / 1024)} MB\nGruppi attivi: ${Object.keys(groupData).length}\nUtenti registrati: ${Object.keys(userStats).length}`;
             await msg.reply(text);
@@ -1975,63 +2352,259 @@ if (command === 'fun' || command === 'divertimento') {
             );
         }
 
-        else if (command === 'amore') {
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona qualcuno per calcolare l\'amore!');
-            const percentuale = Math.floor(Math.random() * 101);
-            let messaggio = '';
-            if (percentuale < 30) messaggio = '💔 Non è proprio amore...';
-            else if (percentuale < 60) messaggio = '💛 C\'è del potenziale!';
-            else if (percentuale < 80) messaggio = '💕 Bella coppia!';
-            else messaggio = '💖 Amore perfetto!';
-            await msg.reply(
-                `💘 *CALCOLATORE AMORE*\n\n` +
-                `@${(msg.author || msg.from).split('@')[0]} ❤️ @${mentioned[0].id._serialized.split('@')[0]}\n\n` +
-                `Compatibilità: *${percentuale}%*\n${messaggio}`,
-                undefined,
-                { mentions: [msg.author || msg.from, mentioned[0].id._serialized] }
+        // COMANDO: .s -> converti immagine in sticker
+else if (command === 's' || command === 'sticker') {
+    try {
+        // Trova il messaggio che contiene il media
+        let mediaMsg = null;
+        
+        // Controlla se il messaggio corrente ha media
+        if (msg.hasMedia) {
+            mediaMsg = msg;
+        } else {
+            // Altrimenti cerca nel messaggio quotato
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted && quoted.hasMedia) {
+                    mediaMsg = quoted;
+                }
+            } catch (e) {
+                // Messaggio quotato non disponibile o senza media
+            }
+        }
+        
+        // Se non c'è media, informa l'utente
+        if (!mediaMsg) {
+            return msg.reply(
+                "📎 *CREA STICKER*\n\n" +
+                "Per creare uno sticker:\n" +
+                "• Invia un'immagine con caption `.s`\n" +
+                "• Rispondi a un'immagine/GIF con `.s`\n\n" +
+                "⚠️ Formati supportati: JPG, PNG, GIF"
             );
         }
+        
+        // Verifica il tipo di media
+        const mediaType = mediaMsg.type;
+        if (!['image', 'video'].includes(mediaType)) {
+            return msg.reply('⚠️ Puoi creare sticker solo da immagini o video/GIF!');
+        }
+        
+        // Notifica che sta processando
+        await msg.reply('⏳ Creazione sticker in corso...');
+        
+        // Scarica il media
+        const media = await mediaMsg.downloadMedia();
+        
+        if (!media || !media.data) {
+            return msg.reply("❌ Impossibile scaricare il media. Riprova.");
+        }
+        
+        // Determina se è animato (GIF o video corto)
+        const isAnimated = media.mimetype && (
+            media.mimetype.includes('gif') || 
+            media.mimetype.includes('video')
+        );
+        
+        // Crea MessageMedia per lo sticker
+        const stickerMedia = new MessageMedia(
+            media.mimetype || 'image/png', 
+            media.data, 
+            media.filename || 'sticker'
+        );
+        
+        // Opzioni per lo sticker
+        const stickerOptions = {
+            sendMediaAsSticker: true,
+            stickerName: 'Bot Sticker',
+            stickerAuthor: 'WhatsApp Bot',
+        };
+        
+        // Aggiungi opzione per sticker animati solo se supportato
+        if (isAnimated) {
+            stickerOptions.stickerAnimated = true;
+        }
+        
+        // Invia lo sticker
+        await client.sendMessage(msg.from, stickerMedia, stickerOptions);
+        
+        // Conferma successo
+        await msg.reply('✅ Sticker creato con successo! 🎉');
+        
+    } catch (err) {
+        console.error('❌ Errore nel comando .s:', err);
+        
+        // Messaggi di errore più specifici
+        let errorMsg = '❌ Errore durante la creazione dello sticker.';
+        
+        if (err.message.includes('file size')) {
+            errorMsg = '❌ Il file è troppo grande! Max 500KB per immagini, 1MB per GIF.';
+        } else if (err.message.includes('format')) {
+            errorMsg = '❌ Formato non supportato. Usa JPG, PNG o GIF.';
+        } else if (err.message.includes('timeout')) {
+            errorMsg = '❌ Timeout durante il download. Riprova con un file più piccolo.';
+        }
+        
+        await msg.reply(errorMsg);
+    }
+}
 
-        else if (command === 'ship') {
-            const mentioned = await msg.getMentions();
-            if (mentioned.length < 2) return msg.reply('⚠️ Menziona due utenti da shippare!');
-            const percentuale = Math.floor(Math.random() * 101);
-            const nome1 = mentioned[0].pushname || mentioned[0].id._serialized.split('@')[0];
-            const nome2 = mentioned[1].pushname || mentioned[1].id._serialized.split('@')[0];
-            const shipName = nome1.slice(0, Math.ceil(nome1.length/2)) + nome2.slice(Math.floor(nome2.length/2));
-            let messaggio = '';
-            if (percentuale < 30) messaggio = '💔 Meglio restare amici...';
-            else if (percentuale < 60) messaggio = '💛 Potrebbero funzionare!';
-            else if (percentuale < 80) messaggio = '💕 Che bella coppia!';
-            else messaggio = '💖 Match perfetto!';
-            await msg.reply(
-                `💝 *SHIP*\n\n` +
-                `@${mentioned[0].id._serialized.split('@')[0]} 💕 @${mentioned[1].id._serialized.split('@')[0]}\n\n` +
-                `Nome coppia: *${shipName}*\n` +
-                `Compatibilità: *${percentuale}%*\n${messaggio}`,
-                undefined,
-                { mentions: [mentioned[0].id._serialized, mentioned[1].id._serialized] }
-            );
+// COMANDO: .sticker-pack -> info sui limiti degli sticker
+else if (command === 'sticker-info' || command === 'stickerinfo') {
+    await msg.reply(
+        "🎨 *INFO STICKER*\n\n" +
+        "📏 *Limiti:*\n" +
+        "• Immagini: max 500KB\n" +
+        "• GIF/Video: max 1MB\n" +
+        "• Durata video: max 6 secondi\n" +
+        "• Risoluzione: 512x512 px (ottimale)\n\n" +
+        "✅ *Formati supportati:*\n" +
+        "• JPG, PNG (statici)\n" +
+        "• GIF (animati)\n" +
+        "• MP4 (animati, max 6s)\n\n" +
+        "💡 *Uso:*\n" +
+        "• `.s` su immagine\n" +
+        "• `.s` rispondendo a media"
+    );
+}
+
+        // BONUS: Roulette dell'amore - trova partner per l'utente che scrive
+else if (command === 'amore' || command === 'trovamore') {
+    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    
+    try {
+        const senderId = msg.author || msg.from;
+        
+        // Ottieni tutti i partecipanti (escluso chi ha mandato il comando e il bot)
+        const botId = client.info?.wid?._serialized || client.info?.me?._serialized || '';
+        const participants = chat.participants.filter(p => {
+            return p.id._serialized !== senderId && p.id._serialized !== botId;
+        });
+        
+        if (participants.length === 0) {
+            return msg.reply('⚠️ Non ci sono altri membri disponibili nel gruppo!');
         }
+        
+        // Scegli un partner casuale
+        const partner = participants[Math.floor(Math.random() * participants.length)];
+        const percentuale = Math.floor(Math.random() * 101);
+        
+        let messaggio = '';
+        if (percentuale < 30) messaggio = '💔 Non sembra promettente...';
+        else if (percentuale < 60) messaggio = '💛 C\'è del potenziale!';
+        else if (percentuale < 80) messaggio = '💕 Bella coppia!';
+        else messaggio = '💖 Match perfetto!';
+        
+        const nomePartner = partner.id._serialized.split('@')[0];
+        const nomeSender = senderId.split('@')[0];
+        
+        await msg.reply(
+            `💘 *ROULETTE DELL\'AMORE* 🎰\n\n` +
+            `@${nomeSender} ❤️ @${nomePartner}\n\n` +
+            `Compatibilità: *${percentuale}%*\n${messaggio}`,
+            undefined,
+            { mentions: [senderId, partner.id._serialized] }
+        );
+        
+    } catch (err) {
+        console.error('Errore amoroulette:', err);
+        await msg.reply('❌ Errore nella ricerca del partner. Riprova!');
+    }
+}
+
+        // VARIANTE: Crea coppia con utenti specifici
+else if (command === 'shippa') {
+    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    
+    const mentioned = await msg.getMentions();
+    
+    if (mentioned.length === 0) {
+        // Se non ci sono mention, comportati come creacoppia
+        return msg.reply('💡 Usa `.creacoppia` per una coppia casuale, oppure `.shippa @user1 @user2` per shippare due persone specifiche!');
+    }
+    
+    if (mentioned.length === 1) {
+        return msg.reply('⚠️ Menziona un secondo utente da shippare!');
+    }
+    
+    if (mentioned.length >= 2) {
+        const frasi = [
+            'sono ufficialmente una coppia! 💑',
+            'si sono sposati! 💒',
+            'sono innamorati! 😍',
+            'sono fidanzati! 💕',
+            'sono destinati a stare insieme! ✨',
+            'hanno fatto match! 💖',
+            'sono anime gemelle! 💫'
+        ];
+        
+        const fraseScelta = frasi[Math.floor(Math.random() * frasi.length)];
+        const nome1 = mentioned[0].id._serialized.split('@')[0];
+        const nome2 = mentioned[1].id._serialized.split('@')[0];
+        
+        await msg.reply(
+            `💘 *CUPIDO HA COLPITO!* 🏹\n\n` +
+            `@${nome1} e @${nome2} ${fraseScelta}\n\n` +
+            `💕 Che coppia! 🎉`,
+            undefined,
+            { mentions: [mentioned[0].id._serialized, mentioned[1].id._serialized] }
+        );
+    }
+}
 
         else if (command === 'creacoppia') {
-            const mentioned = await msg.getMentions();
-            if (mentioned.length < 2) return msg.reply('⚠️ Menziona due utenti da mettere insieme!');
-            const frasi = [
-                'sono ufficialmente una coppia! 💑',
-                'si sono sposati! 💒',
-                'sono innamorati! 😍',
-                'sono fidanzati! 💕',
-                'sono destinati a stare insieme! ✨'
-            ];
-            await msg.reply(
-                `💘 *CUPIDO HA COLPITO*\n\n` +
-                `@${mentioned[0].id._serialized.split('@')[0]} e @${mentioned[1].id._serialized.split('@')[0]} ${frasi[Math.floor(Math.random() * frasi.length)]}`,
-                undefined,
-                { mentions: [mentioned[0].id._serialized, mentioned[1].id._serialized] }
-            );
+    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    
+    try {
+        // Ottieni tutti i partecipanti del gruppo (escluso il bot)
+        const participants = chat.participants.filter(p => {
+            // Escludi il bot stesso
+            const botId = client.info?.wid?._serialized || client.info?.me?._serialized || '';
+            return p.id._serialized !== botId;
+        });
+        
+        if (participants.length < 2) {
+            return msg.reply('⚠️ Servono almeno 2 membri nel gruppo (escluso il bot)!');
         }
+        
+        // Scegli due utenti casuali diversi
+        const shuffled = participants.sort(() => Math.random() - 0.5);
+        const user1 = shuffled[0];
+        const user2 = shuffled[1];
+        
+        // Frasi romantiche
+        const frasi = [
+            'sono ufficialmente una coppia! 💑',
+            'si sono sposati! 💒',
+            'sono innamorati! 😍',
+            'sono fidanzati! 💕',
+            'sono destinati a stare insieme! ✨',
+            'hanno fatto match! 💖',
+            'sono anime gemelle! 💫',
+            'formano una coppia perfetta! 💝',
+            'si sono dichiarati! 💌',
+            'hanno iniziato a frequentarsi! 🥰'
+        ];
+        
+        const fraseScelta = frasi[Math.floor(Math.random() * frasi.length)];
+        
+        // Ottieni i nomi o numeri degli utenti
+        const nome1 = user1.id.user || user1.id._serialized.split('@')[0];
+        const nome2 = user2.id.user || user2.id._serialized.split('@')[0];
+        
+        await msg.reply(
+            `💘 *CUPIDO HA COLPITO!* 🏹\n\n` +
+            `@${nome1} e @${nome2} ${fraseScelta}\n\n` +
+            `💕 Auguri ai neo-fidanzati! 🎉`,
+            undefined,
+            { mentions: [user1.id._serialized, user2.id._serialized] }
+        );
+        
+    } catch (err) {
+        console.error('Errore creacoppia:', err);
+        await msg.reply('❌ Errore nella creazione della coppia. Riprova!');
+    }
+}
 
         // ===== TEXT MANIPULATION =====
 
@@ -2170,6 +2743,7 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
 
 
 
