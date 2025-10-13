@@ -2,6 +2,8 @@ const { Client, LocalAuth, MessageMedia, Buttons, List } = require('whatsapp-web
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 
+let text = '';
+
 // ---------------------- DATABASE ----------------------
 let groupData = {};
 let games = {};
@@ -2152,3 +2154,4 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
