@@ -375,6 +375,12 @@ if (!msg.body || !msg.body.startsWith('.')) return;
 const args = msg.body.slice(1).trim().split(/ +/);
 const command = (args.shift() || '').toLowerCase();
 
+// ---------- CONTROLLO MODALITÀ ADMIN ----------
+if (chat.isGroup && groupData[chat.id._serialized]?.adminMode) {
+    const isUserAdmin = await isAdmin(msg, chat);
+    if (!isUserAdmin && command !== 'modoadmin') return; // silenzio per non-admin
+}       
+
 // ================= FUNZIONE FALLBACK =================
 async function sendListOrFallback(client, to, text, sections, buttonText, title) {
   try {
@@ -830,6 +836,15 @@ if (command === 'fun' || command === 'divertimento') {
             const warnCount = g.warnings[targetId] || 0;
             await msg.reply(`📋 *WARNINGS*\n\n👤 Utente: ${targetName}\n⚠️ Warn: *${warnCount}/${g.maxWarns}*`);
         }
+
+        else if (command === 'modoadmin') {
+            if (!isGroup) return;
+            if (!await isAdmin(msg, chat)) return;
+            initGroup(chat.id._serialized);
+            groupData[chat.id._serialized].adminMode = !groupData[chat.id._serialized].adminMode;
+            const stato = groupData[chat.id._serialized].adminMode ? 'attiva' : 'disattiva';
+            await msg.reply(`✅ Modalità admin ${stato} nel gruppo!`);
+        }    
 
         else if (command === 'clearwarns') {
             if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
@@ -2154,4 +2169,5 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
 
