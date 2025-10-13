@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 
 let text = '';
+let gameStates = {};
 
 // ---------------------- DATABASE ----------------------
 let groupData = {};
@@ -2169,5 +2170,6 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
 
 
