@@ -320,114 +320,117 @@ client.on('message', async (msg) => {
         }
 
         // Utenti mutati - controlla sia numero che ID completo
-const isMuted = groupInfo.mutedUsers.some(id => 
-    id === userId || id.split('@')[0] === userNumber
-);
-if (isMuted) {
-    try { 
-        await msg.delete(true); 
-        return;
-    } catch (err) {
-        console.log('Errore eliminazione messaggio mutato:', err);
-    }
-}
-
-// Utenti bannati
-const isBanned = groupInfo.bannedUsers.some(id => 
-    id === userId || id.split('@')[0] === userNumber
-);
-if (isBanned) {
-    if (await isBotAdmin(chat)) {
-        try { 
-            await chat.removeParticipants([msg.author]); 
-            return;
-        } catch (err) {
-            console.log('Errore rimozione utente bannato:', err);
-        }
-    }
-}
-
-// Anti-link
-if (groupInfo.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
-    if (!(await isAdmin(msg, chat))) {
-        try { 
-            await msg.delete(true); 
-            await msg.reply('⚠️🔗 *ANTILINK ATTIVO*\n\nI link non sono permessi in questo gruppo!');
-            return;
-        } catch (err) {
-            console.log('Errore antilink:', err);
-        }
-    }
-}
-
-// Anti-bot
-if (groupInfo.antiBot && msg.fromMe === false) {
-    const contact = await msg.getContact();
-    if (contact.isWAContact === false || contact.isBusiness) {
-        if (!(await isAdmin(msg, chat))) {
-            try {
-                await chat.removeParticipants([msg.author]);
-                await msg.reply('🤖❌ Bot rilevato e rimosso automaticamente!');
+        const isMuted = groupInfo?.mutedUsers?.some(id => 
+            id === userId || id.split('@')[0] === userNumber
+        );
+        if (isMuted) {
+            try { 
+                await msg.delete(true); 
                 return;
             } catch (err) {
-                console.log('Errore antibot:', err);
+                console.log('Errore eliminazione messaggio mutato:', err);
             }
         }
-    }
-}
 
-            // Slowmode
-            if (groupInfo.slowmode > 0) {
-                const lastMsg = groupInfo.lastMessage[userNumber] || 0;
-                if (Date.now() - lastMsg < groupInfo.slowmode * 1000) {
-                    try { 
-                        await msg.delete(true); 
-                        return;
-                    } catch {}
+        // Utenti bannati
+        const isBanned = groupInfo?.bannedUsers?.some(id => 
+            id === userId || id.split('@')[0] === userNumber
+        );
+        if (isBanned) {
+            if (await isBotAdmin(chat)) {
+                try { 
+                    await chat.removeParticipants([msg.author]); 
+                    return;
+                } catch (err) {
+                    console.log('Errore rimozione utente bannato:', err);
                 }
-                groupInfo.lastMessage[userNumber] = Date.now();
             }
+        }
 
-            // Parole vietate
-            if ((msg.body || '').length > 0 && groupInfo.blockedWords.some(w => msg.body.toLowerCase().includes(w.toLowerCase()))) {
+        // Anti-link
+        if (groupInfo?.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
+            if (!(await isAdmin(msg, chat))) {
                 try { 
                     await msg.delete(true); 
-                    await msg.reply('⚠️🚫 Hai usato una parola vietata!');
+                    await msg.reply('⚠️🔗 *ANTILINK ATTIVO*\n\nI link non sono permessi in questo gruppo!');
                     return;
-                } catch {}
+                } catch (err) {
+                    console.log('Errore antilink:', err);
+                }
             }
+        }
 
-            // Anti-flood
-            if (automod?.antiFlood) {
-                if (!groupInfo.messageCount) groupInfo.messageCount = {};
-                if (!groupInfo.messageCount[userNumber]) groupInfo.messageCount[userNumber] = [];
-                
-                groupInfo.messageCount[userNumber].push(Date.now());
-                groupInfo.messageCount[userNumber] = groupInfo.messageCount[userNumber].filter(t => Date.now() - t < automod.timeWindow * 1000);
-                
-                if (groupInfo.messageCount[userNumber].length > automod.maxMessages) {
-                    if (!(await isAdmin(msg, chat))) {
-                        try {
-                            await msg.delete(true);
-                            await msg.reply(`⚠️💥 *FLOOD RILEVATO!*\n\n@${userNumber} stai inviando troppi messaggi!`);
-                            groupInfo.messageCount[userNumber] = [];
-                        } catch {}
+        // Anti-bot
+        if (groupInfo?.antiBot && msg.fromMe === false) {
+            const contact = await msg.getContact();
+            if (contact.isWAContact === false || contact.isBusiness) {
+                if (!(await isAdmin(msg, chat))) {
+                    try {
+                        await chat.removeParticipants([msg.author]);
+                        await msg.reply('🤖❌ Bot rilevato e rimosso automaticamente!');
+                        return;
+                    } catch (err) {
+                        console.log('Errore antibot:', err);
                     }
                 }
             }
         }
+
+        // Slowmode
+        if (groupInfo?.slowmode > 0) {
+            const lastMsg = groupInfo.lastMessage?.[userNumber] || 0;
+            if (Date.now() - lastMsg < groupInfo.slowmode * 1000) {
+                try { 
+                    await msg.delete(true); 
+                    return;
+                } catch {}
+            }
+            groupInfo.lastMessage = groupInfo.lastMessage || {};
+            groupInfo.lastMessage[userNumber] = Date.now();
+        }
+
+        // Parole vietate
+        if ((msg.body || '').length > 0 && (groupInfo?.blockedWords || []).some(w => (msg.body || '').toLowerCase().includes(w.toLowerCase()))) {
+            try { 
+                await msg.delete(true); 
+                await msg.reply('⚠️🚫 Hai usato una parola vietata!');
+                return;
+            } catch {}
+        }
+
+        // Anti-flood
+        if (automod?.antiFlood) {
+            groupInfo.messageCount = groupInfo.messageCount || {};
+            if (!groupInfo.messageCount[userNumber]) groupInfo.messageCount[userNumber] = [];
+            
+            groupInfo.messageCount[userNumber].push(Date.now());
+            groupInfo.messageCount[userNumber] = groupInfo.messageCount[userNumber].filter(t => Date.now() - t < automod.timeWindow * 1000);
+            
+            if (groupInfo.messageCount[userNumber].length > automod.maxMessages) {
+                if (!(await isAdmin(msg, chat))) {
+                    try {
+                        await msg.delete(true);
+                        await msg.reply(`⚠️💥 *FLOOD RILEVATO!*\n\n@${userNumber} stai inviando troppi messaggi!`);
+                        groupInfo.messageCount[userNumber] = [];
+                    } catch {}
+                }
+            }
+        }
+
+             
 
         // ---------------------- COMANDI ----------------------
 if (!msg.body || !msg.body.startsWith('.')) return;
 
 const args = msg.body.slice(1).trim().split(/ +/);
 const command = (args.shift() || '').toLowerCase();
+const text = msg.body.slice(1); // se ti serve il testo intero senza il punto
 
-// ---------- CONTROLLO MODALITÀ ADMIN ----------
-if (chat.isGroup && groupData[chat.id._serialized]?.adminMode) {
-    const isUserAdmin = await isAdmin(msg, chat);
-    if (!isUserAdmin && command !== 'modoadmin') return; // silenzio per non-admin
-}       
+// ---------- CONTROLLO MODALITÀ ADMIN (POSIZIONE CORRETTA) ----------
+        if (isGroup && groupData[chat.id._serialized]?.adminMode) {
+            const isUserAdmin = await isAdmin(msg, chat); // OK perché sei in funzione async
+            if (!isUserAdmin && command !== 'modoadmin') return; // esce dall'handler
+        }     
 
 // ================= FUNZIONE FALLBACK =================
 async function sendListOrFallback(client, to, text, sections, buttonText, title) {
@@ -448,8 +451,8 @@ async function sendListOrFallback(client, to, text, sections, buttonText, title)
 }
 
 // ========== MENU PRINCIPALE ==========
-if (['menu', 'help', 'comandi'].includes(command)) {
-  const menuText = `
+        if (['menu', 'help', 'comandi'].includes(command)) {
+            const menuText = `
 ╔═══════════════════════╗
 ║  🤖 *BOT WHATSAPP*   ║
 ║  *MENU PRINCIPALE*    ║
@@ -481,39 +484,38 @@ Usa i pulsanti qui sotto per navigare rapidamente nei menu!
 ⏰ *Uptime:* ${formatTime(Math.floor((Date.now() - startTime) / 1000))}
 `;
 
-  const sections = [
-    {
-      title: '👮 MODERAZIONE',
-      rows: [
-        { id: '.moderazione', title: '👮 Moderazione', description: 'Comandi admin e moderazione' },
-        { id: '.automod', title: '🛡️ Auto-Moderazione', description: 'Sistema automatico' }
-      ]
-    },
-    {
-      title: '💰 SISTEMA',
-      rows: [
-        { id: '.economia', title: '💰 Economia', description: 'Soldi, lavoro, banca' },
-        { id: '.giochi', title: '🎮 Giochi', description: 'Slot, quiz, indovina' }
-      ]
-    },
-    {
-      title: '🎉 EXTRA',
-      rows: [
-        { id: '.fun', title: '🎪 Fun & Social', description: 'Comandi divertenti' },
-        { id: '.utilita', title: '⚙️ Utilità', description: 'Strumenti vari' }
-      ]
-    }
-  ];
+            const sections = [
+                {
+                    title: '👮 MODERAZIONE',
+                    rows: [
+                        { id: '.moderazione', title: '👮 Moderazione', description: 'Comandi admin e moderazione' },
+                        { id: '.automod', title: '🛡️ Auto-Moderazione', description: 'Sistema automatico' }
+                    ]
+                },
+                {
+                    title: '💰 SISTEMA',
+                    rows: [
+                        { id: '.economia', title: '💰 Economia', description: 'Soldi, lavoro, banca' },
+                        { id: '.giochi', title: '🎮 Giochi', description: 'Slot, quiz, indovina' }
+                    ]
+                },
+                {
+                    title: '🎉 EXTRA',
+                    rows: [
+                        { id: '.fun', title: '🎪 Fun & Social', description: 'Comandi divertenti' },
+                        { id: '.utilita', title: '⚙️ Utilità', description: 'Strumenti vari' }
+                    ]
+                }
+            ];
 
-  // Invia menu interattivo o fallback testuale
-  await sendListOrFallback(client, msg.from, menuText, sections, '📋 Seleziona Menu', '🤖 Bot Menu');
-  return;
-}
+            // Invia menu interattivo o fallback testuale
+            await sendListOrFallback(client, msg.from, menuText, sections, '📋 Seleziona Menu', '🤖 Bot Menu');
+            return;
+        }
 
-
-// ========== MENU MODERAZIONE ==========
-if (command === 'moderazione' || command === 'mod') {
-  const modText = `
+        // ========== MENU MODERAZIONE ==========
+        else if (command === 'moderazione' || command === 'mod') {
+            const modText = `
 ╔═══════════════════════╗
 ║ 👮 *MODERAZIONE*     ║
 ╚═══════════════════════╝
@@ -576,9 +578,9 @@ if (command === 'moderazione' || command === 'mod') {
 💡 *SUGGERIMENTO:*
 Usa .automod per configurare la moderazione automatica!
 `;
-  await msg.reply(modText);
-  return;
-}
+            await msg.reply(modText);
+            return;
+        }
 
 // ========== MENU AUTO-MODERAZIONE ==========
 if (command === 'automod' || command === 'automoderatore') {
@@ -707,7 +709,7 @@ if (command === 'fun' || command === 'divertimento') {
        // COMANDO: .tag
         else if (command === 'tag' || command === 'tagall') {
             if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin()) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
 
             const messageText = args.join(' ').trim() || '📢 Attenzione!';
             const mentions = [];
@@ -1001,6 +1003,47 @@ else if (command === 'muta' || command === 'mute') {
     }
 }
 
+else if (command === 'modoadmin' || command === 'adminmode') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const status = args[0]?.toLowerCase();
+    if (!['on', 'off'].includes(status)) {
+        initGroup(chat.id._serialized);
+        const currentStatus = groupData[chat.id._serialized].adminMode ? '✅ ON' : '❌ OFF';
+        return msg.reply(`⚙️ 👑 *MODO ADMIN*\n\nStato: ${currentStatus}\n\nQuando attivo, solo gli admin possono usare i comandi.\n\nUsa: .modoadmin on/off`);
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].adminMode = (status === 'on');
+    saveData();
+    await msg.reply(`✅ 👑 Modo Admin ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!`);
+}
+
+else if (command === 'attivita' || command === 'activity') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    
+    const totalMessages = Object.values(userStats)
+        .filter(u => u.messages > 0)
+        .reduce((sum, u) => sum + u.messages, 0);
+    
+    const activeUsers = Object.keys(userStats).filter(id => userStats[id].messages > 0).length;
+    
+    await msg.reply(
+        `📈 *ATTIVITÀ GRUPPO*\n\n` +
+        `👥 Utenti attivi: *${activeUsers}*\n` +
+        `💬 Messaggi totali: *${totalMessages}*\n` +
+        `⚠️ Utenti mutati: *${g.mutedUsers.length}*\n` +
+        `🚫 Utenti bannati: *${g.bannedUsers.length}*\n` +
+        `🛡️ Antilink: ${g.antilink ? '✅' : '❌'}\n` +
+        `🤖 Antibot: ${g.antiBot ? '✅' : '❌'}\n` +
+        `⏱️ Slowmode: ${g.slowmode}s`
+    );
+}
+
 // SMUTA UTENTE
 else if (command === 'smuta' || command === 'unmute') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
@@ -1163,7 +1206,7 @@ Un warning è stato rimosso con successo.`
 // VISUALIZZA WARNINGS
 else if (command === 'warnings') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    
+    const userId = getUserIdFromMsg(msg); // AGGIUNGI QUESTA RIGA
     const mentioned = await msg.getMentions();
     const targetId = mentioned.length > 0 ? mentioned[0].id._serialized : userId;
     const targetName = mentioned.length > 0 
@@ -2626,6 +2669,59 @@ else if (command === 'shippa') {
             await msg.reply(`\`\`\`\n${output}\n\`\`\``);
         }
 
+        else if (command === 't' && args[0]) {
+    const chatId = chat.id._serialized;
+    if (!gameStates[chatId]?.tictactoe) return msg.reply('⚠️ Nessuna partita attiva! Usa .tictactoe');
+    
+    const game = gameStates[chatId].tictactoe;
+    const pos = parseInt(args[0]) - 1;
+    
+    if (isNaN(pos) || pos < 0 || pos > 8) return msg.reply('⚠️ Posizione non valida! Usa 1-9');
+    if (game.board[pos] !== '⬜') return msg.reply('⚠️ Posizione già occupata!');
+    
+    const currentPlayer = msg.author || msg.from;
+    if (currentPlayer !== game.turn) return msg.reply('⚠️ Non è il tuo turno!');
+    
+    const symbol = currentPlayer === game.player1 ? '⭕' : '❌';
+    game.board[pos] = symbol;
+    
+    // Controlla vittoria
+    const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    const hasWon = wins.some(w => w.every(i => game.board[i] === symbol));
+    
+    if (hasWon) {
+        await msg.reply(
+            `🎉 *VITTORIA!*\n\n` +
+            `${game.board.slice(0,3).join('')}\n` +
+            `${game.board.slice(3,6).join('')}\n` +
+            `${game.board.slice(6,9).join('')}\n\n` +
+            `@${currentPlayer.split('@')[0]} ha vinto!`,
+            undefined,
+            { mentions: [currentPlayer] }
+        );
+        delete gameStates[chatId].tictactoe;
+    } else if (!game.board.includes('⬜')) {
+        await msg.reply(
+            `🤝 *PAREGGIO!*\n\n` +
+            `${game.board.slice(0,3).join('')}\n` +
+            `${game.board.slice(3,6).join('')}\n` +
+            `${game.board.slice(6,9).join('')}`
+        );
+        delete gameStates[chatId].tictactoe;
+    } else {
+        game.turn = game.turn === game.player1 ? game.player2 : game.player1;
+        await msg.reply(
+            `${game.board.slice(0,3).join('')}\n` +
+            `${game.board.slice(3,6).join('')}\n` +
+            `${game.board.slice(6,9).join('')}\n\n` +
+            `Turno di @${game.turn.split('@')[0]}`,
+            undefined,
+            { mentions: [game.turn] }
+        );
+    }
+    saveData();
+}
+
         else if (command === 'reverse') {
             if (!args.length) return msg.reply('⚠️ Usa: .reverse [testo]');
             const testo = msg.body.slice(9);
@@ -2730,11 +2826,14 @@ else if (command === 'shippa') {
             if (!isGroup) await msg.reply('❓ Comando non riconosciuto. Usa .menu per la lista dei comandi.');
         }
 
-    } catch (err) {
-        console.error('Errore handler message:', err);
-        try { await msg.reply('❌ Si è verificato un errore interno nel bot.'); } catch {}
+     } catch (err) {
+        console.error('⚠️ Errore nel processamento del messaggio:', err);
     }
-});
+}); // Chiude client.on('message')     
+       
+
+    
+
 
 // salva dati al termine del processo
 process.on('exit', () => saveData());
@@ -2743,7 +2842,3 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
-
-
-
-
