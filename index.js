@@ -1,6 +1,7 @@
 const { Client, LocalAuth, MessageMedia, Buttons, List } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
+const autoAcceptRequests = {};
 
 let text = '';
 let gameStates = {};
@@ -286,6 +287,42 @@ function addXP(userId, amount) {
     return false;
 }
 
+
+
+// Funzioni helper per livelli
+function calculateLevel(xp) {
+    return Math.floor(Math.sqrt(xp / 100));
+}
+
+function getXPForLevel(level) {
+    return level * level * 100;
+}
+
+function createProgressBar(current, total, length = 10) {
+    const filled = Math.floor((current / total) * length);
+    const empty = length - filled;
+    return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
+function getUserStats(userId) {
+    initUser(userId); // Crea l'utente se non esiste
+    return userStats[userId]; // Restituisci direttamente l'oggetto
+}
+
+// Listener per richieste di ingresso gruppo
+client.on('group_join_request', async (notification) => {
+    try {
+        const groupId = notification.chatId;
+        
+        if (autoAcceptRequests[groupId]) {
+            await notification.approve();
+            console.log(`✅ Richiesta accettata automaticamente per ${groupId}`);
+        }
+    } catch (err) {
+        console.error('Errore accettazione richiesta:', err);
+    }
+});
+
 function formatTime(seconds) {
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
@@ -465,7 +502,6 @@ async function sendListOrFallback(client, to, text, sections, buttonText, title)
 • .economia - Sistema economico 💰
 • .giochi - Giochi disponibili 🎮
 • .fun - Comandi divertenti 🎪
-• .utilita - Strumenti utili ⚙️
 
 📊 *STATISTICHE:*
 • .level - Il tuo livello 🏆
@@ -503,7 +539,6 @@ Usa i pulsanti qui sotto per navigare rapidamente nei menu!
                     title: '🎉 EXTRA',
                     rows: [
                         { id: '.fun', title: '🎪 Fun & Social', description: 'Comandi divertenti' },
-                        { id: '.utilita', title: '⚙️ Utilità', description: 'Strumenti vari' }
                     ]
                 }
             ];
@@ -705,35 +740,50 @@ if (command === 'fun' || command === 'divertimento') {
 }
 
 
+       // COMANDO: .tag / .tagall
+else if (command === 'tag' || command === 'tagall') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
 
-       // COMANDO: .tag
-        else if (command === 'tag' || command === 'tagall') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    const messageText = args.join(' ').trim() || '📢 Attenzione!';
+    const mentions = [];
 
-            const messageText = args.join(' ').trim() || '📢 Attenzione!';
-            const mentions = [];
-
-            // Raccogli tutti i contatti per le menzioni
-            for (let participant of chat.participants) {
-                try {
-                    const contact = await client.getContactById(participant.id._serialized);
-                    mentions.push(contact);
-                } catch (e) {
-                    // Se non riesce a ottenere il contatto, salta
-                    console.log('Impossibile ottenere contatto:', participant.id._serialized);
-                }
-            }
-
-            // Invia SOLO il messaggio personalizzato, ma con le menzioni "invisibili"
-            // WhatsApp notificherà tutti anche senza gli @ visibili
-            try {
-                await chat.sendMessage(messageText, { mentions });
-            } catch (err) {
-                console.error('Errore comando .tag:', err);
-                await msg.reply('❌ Errore durante il tag di tutti i membri.');
-            }
+    // Raccogli tutti i contatti per le menzioni
+    for (let participant of chat.participants) {
+        try {
+            const contact = await client.getContactById(participant.id._serialized);
+            mentions.push(contact);
+        } catch (e) {
+            // Se non riesce a ottenere il contatto, salta
+            console.log('Impossibile ottenere contatto:', participant.id ? participant.id._serialized : participant);
         }
+    }
+
+    // Se il comando è stato inviato come risposta, recupera il messaggio quotato
+    let quotedMsgObj = null;
+    if (msg.hasQuotedMsg) {
+        try {
+            quotedMsgObj = await msg.getQuotedMessage();
+        } catch (e) {
+            console.log('Errore recupero messaggio quotato:', e);
+            quotedMsgObj = null;
+        }
+    }
+
+    try {
+        // Se esiste un messaggio quotato: invia il messaggio taggando tutti e quotando quel messaggio
+        if (quotedMsgObj) {
+            // Invia il testo (puoi includere anche il corpo del messaggio quotato se vuoi)
+            await chat.sendMessage(messageText, { mentions, quoted: quotedMsgObj });
+        } else {
+            // Nessuna risposta: invia normalmente taggando tutti
+            await chat.sendMessage(messageText, { mentions });
+        }
+    } catch (err) {
+        console.error('Errore comando .tag:', err);
+        await msg.reply('❌ Errore durante il tag di tutti i membri.');
+    }
+}
 
 // HIDETAG - Tag nascosto
 else if (command === 'hidetag') {
@@ -2395,97 +2445,175 @@ else if (command === 'clearwarns') {
             );
         }
 
-        // COMANDO: .s -> converti immagine in sticker
-else if (command === 's' || command === 'sticker') {
+        // ===== COMANDO RIVELA CORRETTO =====
+else if (command === 'rivela' || command === 'reveal') {
     try {
-        // Trova il messaggio che contiene il media
-        let mediaMsg = null;
+        const quotedMsg = await msg.getQuotedMessage();
         
-        // Controlla se il messaggio corrente ha media
-        if (msg.hasMedia) {
-            mediaMsg = msg;
-        } else {
-            // Altrimenti cerca nel messaggio quotato
-            try {
-                const quoted = await msg.getQuotedMessage();
-                if (quoted && quoted.hasMedia) {
-                    mediaMsg = quoted;
-                }
-            } catch (e) {
-                // Messaggio quotato non disponibile o senza media
-            }
-        }
-        
-        // Se non c'è media, informa l'utente
-        if (!mediaMsg) {
+        if (!quotedMsg) {
             return msg.reply(
-                "📎 *CREA STICKER*\n\n" +
-                "Per creare uno sticker:\n" +
-                "• Invia un'immagine con caption `.s`\n" +
-                "• Rispondi a un'immagine/GIF con `.s`\n\n" +
-                "⚠️ Formati supportati: JPG, PNG, GIF"
+                '⚠️ *RIVELA IMMAGINE*\n\n' +
+                '📝 Rispondi a un\'immagine "visualizzabile una volta" con `.rivela`'
             );
         }
         
-        // Verifica il tipo di media
-        const mediaType = mediaMsg.type;
-        if (!['image', 'video'].includes(mediaType)) {
-            return msg.reply('⚠️ Puoi creare sticker solo da immagini o video/GIF!');
+        console.log('Tipo messaggio:', quotedMsg.type);
+        console.log('Ha media:', quotedMsg.hasMedia);
+        
+        // Controlla se è ciphertext (view once criptato) o ha media normale
+        const isViewOnce = quotedMsg.type === 'ciphertext';
+        const hasNormalMedia = quotedMsg.hasMedia === true;
+        
+        if (!isViewOnce && !hasNormalMedia) {
+            return msg.reply('⚠️ Il messaggio non contiene media!');
         }
         
-        // Notifica che sta processando
-        await msg.reply('⏳ Creazione sticker in corso...');
+        if (isViewOnce) {
+            return msg.reply(
+                '❌ *IMPOSSIBILE RIVELARE*\n\n' +
+                '⚠️ I messaggi "visualizzabili una volta" sono criptati end-to-end.\n\n' +
+                '🔒 WhatsApp protegge questi messaggi e non possono essere scaricati dal bot dopo l\'invio.\n\n' +
+                '💡 Questo è per la tua privacy e sicurezza!'
+            );
+        }
+        
+        await msg.reply('🔓 Download in corso...');
+        
+        // Scarica il media normale
+        const media = await quotedMsg.downloadMedia();
+        
+        if (!media || !media.data) {
+            return msg.reply('❌ Impossibile scaricare il media!');
+        }
+        
+        const contact = await msg.getContact();
+        const userName = contact.pushname || 'Qualcuno';
+        
+        // Ricrea il media
+        const revealedMedia = new MessageMedia(
+            media.mimetype,
+            media.data,
+            'revealed_' + (media.filename || 'media')
+        );
+        
+        // Invia il media
+        await client.sendMessage(
+            msg.from, 
+            revealedMedia, 
+            { caption: `🔓 *Media inviato da ${userName}*` }
+        );
+        
+        await msg.reply('✅ Media inviato con successo!');
+        
+    } catch (err) {
+        console.error('Errore rivela:', err);
+        await msg.reply('❌ Errore: ' + err.message);
+    }
+}
+
+// ===== COMANDO STICKER CORRETTO =====
+else if (command === 's' || command === 'sticker') {
+    try {
+        let mediaMsg = null;
+        
+        // 1. Controlla se il messaggio corrente ha media
+        if (msg.hasMedia) {
+            mediaMsg = msg;
+        } 
+        // 2. Controlla il messaggio quotato
+        else {
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted) {
+                    console.log('Quoted type:', quoted.type);
+                    console.log('Quoted hasMedia:', quoted.hasMedia);
+                    
+                    // Controlla se è ciphertext (view once)
+                    if (quoted.type === 'ciphertext') {
+                        return msg.reply(
+                            '❌ *IMPOSSIBILE CREARE STICKER*\n\n' +
+                            '⚠️ Le immagini "visualizzabili una volta" sono criptate.\n\n' +
+                            '🔒 WhatsApp protegge questi messaggi per la tua privacy.\n\n' +
+                            '💡 Invia l\'immagine normalmente per creare lo sticker!'
+                        );
+                    }
+                    
+                    // Se ha media normale, procedi
+                    if (quoted.hasMedia) {
+                        mediaMsg = quoted;
+                    }
+                }
+            } catch (e) {
+                console.error('Errore quote:', e);
+            }
+        }
+        
+        if (!mediaMsg) {
+            return msg.reply(
+                "📎 *CREA STICKER*\n\n" +
+                "✅ Modi d'uso:\n" +
+                "• Invia immagine con caption `.s`\n" +
+                "• Rispondi a immagine/GIF con `.s`\n\n" +
+                "⚠️ Formati: JPG, PNG, GIF, MP4 (max 1MB)\n\n" +
+                "❌ NON funziona con foto 'view once' (sono criptate)"
+            );
+        }
+        
+        // Verifica che sia immagine o video
+        const mediaType = mediaMsg.type;
+        if (!['image', 'video'].includes(mediaType)) {
+            return msg.reply('⚠️ Solo immagini o video/GIF!');
+        }
+        
+        await msg.reply('⏳ Creazione sticker...');
         
         // Scarica il media
         const media = await mediaMsg.downloadMedia();
         
         if (!media || !media.data) {
-            return msg.reply("❌ Impossibile scaricare il media. Riprova.");
+            return msg.reply("❌ Impossibile scaricare il media!");
         }
         
-        // Determina se è animato (GIF o video corto)
-        const isAnimated = media.mimetype && (
-            media.mimetype.includes('gif') || 
-            media.mimetype.includes('video')
-        );
+        // Verifica il mimetype
+        if (!media.mimetype || (!media.mimetype.includes('image') && !media.mimetype.includes('video'))) {
+            return msg.reply('⚠️ Formato non supportato!');
+        }
         
-        // Crea MessageMedia per lo sticker
+        const isAnimated = media.mimetype.includes('gif') || media.mimetype.includes('video');
+        
+        // Crea lo sticker
         const stickerMedia = new MessageMedia(
-            media.mimetype || 'image/png', 
-            media.data, 
-            media.filename || 'sticker'
+            media.mimetype,
+            media.data,
+            'sticker'
         );
         
-        // Opzioni per lo sticker
         const stickerOptions = {
             sendMediaAsSticker: true,
-            stickerName: 'Bot Sticker',
-            stickerAuthor: 'WhatsApp Bot',
+            stickerName: 'WhatsApp Bot',
+            stickerAuthor: 'Bot'
         };
         
-        // Aggiungi opzione per sticker animati solo se supportato
         if (isAnimated) {
             stickerOptions.stickerAnimated = true;
         }
         
-        // Invia lo sticker
         await client.sendMessage(msg.from, stickerMedia, stickerOptions);
-        
-        // Conferma successo
-        await msg.reply('✅ Sticker creato con successo! 🎉');
+        await msg.reply('✅ Sticker creato! 🎉');
         
     } catch (err) {
-        console.error('❌ Errore nel comando .s:', err);
+        console.error('Errore sticker:', err);
         
-        // Messaggi di errore più specifici
-        let errorMsg = '❌ Errore durante la creazione dello sticker.';
+        let errorMsg = '❌ Errore: ';
         
-        if (err.message.includes('file size')) {
-            errorMsg = '❌ Il file è troppo grande! Max 500KB per immagini, 1MB per GIF.';
+        if (err.message.includes('large') || err.message.includes('size')) {
+            errorMsg += 'File troppo grande! Max 500KB immagini, 1MB GIF.';
         } else if (err.message.includes('format')) {
-            errorMsg = '❌ Formato non supportato. Usa JPG, PNG o GIF.';
-        } else if (err.message.includes('timeout')) {
-            errorMsg = '❌ Timeout durante il download. Riprova con un file più piccolo.';
+            errorMsg += 'Formato non supportato.';
+        } else if (err.message.includes('Processing')) {
+            errorMsg += 'Errore nel processare il media. Riprova con un file più piccolo.';
+        } else {
+            errorMsg += err.message;
         }
         
         await msg.reply(errorMsg);
@@ -2743,35 +2871,238 @@ else if (command === 'shippa') {
 
         // ===== MODERAZIONE =====
 
-        else if (command === 'purge') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            const num = parseInt(args[0]);
-            if (isNaN(num) || num < 1 || num > 100) return msg.reply('⚠️ Specifica un numero tra 1 e 100!');
-            await msg.reply(`🗑️ Eliminazione di ${num} messaggi in corso...\n\n_Nota: WhatsApp Web ha limitazioni sulla cancellazione massiva_`);
-        }
-
-        else if (command === 'pin') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+else if (command === 'purge') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const num = parseInt(args[0]);
+    if (isNaN(num) || num < 1 || num > 100) {
+        return msg.reply('⚠️ Specifica un numero tra 1 e 100!\n\n📝 Esempio: `.purge 10`');
+    }
+    
+    try {
+        await msg.reply(`🗑️ Eliminazione di ${num} messaggi in corso...\n\n_Nota: WhatsApp Web ha limitazioni sulla cancellazione massiva_`);
+        
+        // Ottieni i messaggi della chat
+        const messages = await chat.fetchMessages({ limit: num + 1 }); // +1 per escludere il comando stesso
+        let deleted = 0;
+        
+        for (let i = 1; i < messages.length && i <= num; i++) {
             try {
-                await chat.pinMessage(msg.id.id);
-                await msg.reply('📌 Messaggio fissato con successo!');
-            } catch (err) {
-                await msg.reply('❌ Errore nel fissare il messaggio. Assicurati che il bot sia admin!');
+                await messages[i].delete(true); // true = elimina per tutti
+                deleted++;
+                await new Promise(resolve => setTimeout(resolve, 300)); // Pausa per evitare rate limit
+            } catch (e) {
+                console.error('Errore eliminazione messaggio:', e);
             }
         }
+        
+        await msg.reply(`✅ Eliminati ${deleted} messaggi su ${num} richiesti.`);
+    } catch (err) {
+        console.error('Errore purge:', err);
+        await msg.reply('❌ Errore durante l\'eliminazione dei messaggi.');
+    }
+}
 
-        else if (command === 'unpin') {
-            if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-            try {
-                await chat.unpinMessage(msg.id.id);
-                await msg.reply('📌 Messaggio rimosso dai fissati!');
-            } catch (err) {
-                await msg.reply('❌ Errore nel rimuovere il messaggio fissato.');
+// ===== COMANDO PIN CORRETTO =====
+else if (command === 'pin') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    try {
+        let messageToPin = null;
+        
+        // Prova a ottenere il messaggio quotato
+        try {
+            const quotedMsg = await msg.getQuotedMessage();
+            if (quotedMsg) {
+                messageToPin = quotedMsg;
             }
+        } catch (e) {
+            console.log('Nessun messaggio quotato');
         }
+        
+        if (!messageToPin) {
+            return msg.reply('⚠️ Rispondi a un messaggio per fissarlo!');
+        }
+        
+        // Verifica che il bot sia admin
+        if (!await isBotAdmin(chat)) {
+            return msg.reply('❌ Il bot deve essere admin per fissare messaggi!');
+        }
+        
+        // Usa il metodo corretto per pinnare
+        await chat.sendStateRecording(); // Segnala che il bot sta facendo qualcosa
+        await client.pupPage.evaluate((chatId, msgId) => {
+            return window.Store.pinUnpinMsg(
+                window.Store.Msg.get(msgId),
+                true // true = pin, false = unpin
+            );
+        }, chat.id._serialized, messageToPin.id._serialized);
+        
+        await msg.reply('📌 Messaggio fissato con successo!');
+    } catch (err) {
+        console.error('Errore pin:', err);
+        await msg.reply('❌ Errore nel fissare il messaggio: ' + err.message);
+    }
+}
+
+// ===== COMANDO UNPIN CORRETTO =====
+else if (command === 'unpin') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    try {
+        let messageToUnpin = null;
+        
+        try {
+            const quotedMsg = await msg.getQuotedMessage();
+            if (quotedMsg) {
+                messageToUnpin = quotedMsg;
+            }
+        } catch (e) {
+            console.log('Nessun messaggio quotato');
+        }
+        
+        if (!messageToUnpin) {
+            return msg.reply('⚠️ Rispondi a un messaggio fissato per rimuoverlo!');
+        }
+        
+        if (!await isBotAdmin(chat)) {
+            return msg.reply('❌ Il bot deve essere admin per rimuovere messaggi fissati!');
+        }
+        
+        await client.pupPage.evaluate((chatId, msgId) => {
+            return window.Store.pinUnpinMsg(
+                window.Store.Msg.get(msgId),
+                false // false = unpin
+            );
+        }, chat.id._serialized, messageToUnpin.id._serialized);
+        
+        await msg.reply('📌 Messaggio rimosso dai fissati!');
+    } catch (err) {
+        console.error('Errore unpin:', err);
+        await msg.reply('❌ Errore nel rimuovere il pin: ' + err.message);
+    }
+}
+
+// ===== GESTIONE RICHIESTE GRUPPO =====
+
+else if (command === 'accettarichieste') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    try {
+        autoAcceptRequests[chat.id._serialized] = true;
+        await msg.reply('✅ *Accettazione automatica attivata!*\n\nIl bot accetterà automaticamente tutte le richieste di ingresso nel gruppo.');
+    } catch (err) {
+        await msg.reply('❌ Errore nell\'attivare l\'accettazione automatica.');
+    }
+}
+
+else if (command === 'rifiutarichieste') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    try {
+        autoAcceptRequests[chat.id._serialized] = false;
+        await msg.reply('❌ *Accettazione automatica disattivata!*\n\nIl bot non accetterà più automaticamente le richieste di ingresso.');
+    } catch (err) {
+        await msg.reply('❌ Errore nel disattivare l\'accettazione automatica.');
+    }
+}
+
+// ===== COMANDO LEVEL =====
+if (command === 'level' || command === 'livello') {
+    const userId = getUserIdFromMsg(msg);
+    const stats = getUserStats(userId);
+    const level = stats.level || 1;
+    const xp = stats.xp || 0;
+    const xpForNext = level * 100;
+    const progressBar = createProgressBar(xp, xpForNext);
+    
+    try {
+        const contact = await msg.getContact();
+        const userName = contact.pushname || contact.name || 'Utente';
+        
+        await msg.reply(
+            `🏆 *LIVELLO DI ${userName.toUpperCase()}*\n\n` +
+            `📊 Livello: *${level}*\n` +
+            `⭐ XP: *${xp}* / ${xpForNext}\n` +
+            `${progressBar}\n\n` +
+            `📈 Progresso: ${Math.floor((xp / xpForNext) * 100)}%\n` +
+            `🎯 XP mancanti: *${xpForNext - xp}*\n\n` +
+            `💬 Messaggi inviati: ${stats.messages || 0}`
+        );
+    } catch (err) {
+        console.error('Errore level:', err);
+        await msg.reply('❌ Errore nel recuperare il livello.');
+    }
+}
+
+// ===== COMANDO PROFILO =====
+else if (command === 'profilo' || command === 'profile') {
+    const userId = getUserIdFromMsg(msg);
+    const stats = getUserStats(userId);
+    const level = stats.level || 1;
+    const xp = stats.xp || 0;
+    const messages = stats.messages || 0;
+    const rep = stats.reputation || 0;
+    const bio = stats.bio || 'Nessuna bio impostata';
+    
+    try {
+        const contact = await msg.getContact();
+        const userName = contact.pushname || contact.name || 'Utente';
+        const about = contact.statusMessage || 'Nessuno stato';
+        
+        // Determina il rank
+        let rank = '🥉 Bronzo';
+        if (level >= 30) rank = '💎 Diamante';
+        else if (level >= 20) rank = '🏅 Platino';
+        else if (level >= 10) rank = '🥇 Oro';
+        else if (level >= 5) rank = '🥈 Argento';
+        
+        // Recupera economia
+        const eco = economy[userId] || { money: 0, bank: 0 };
+        
+        // Recupera warnings
+        const warns = warnings[userId] || 0;
+        
+        const profileMsg = 
+            `👤 *PROFILO DI ${userName.toUpperCase()}*\n\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `🏆 Livello: *${level}*\n` +
+            `⭐ XP Totale: *${xp}*\n` +
+            `🎖️ Rank: ${rank}\n\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `📊 *STATISTICHE*\n` +
+            `💬 Messaggi: ${messages}\n` +
+            `⭐ Reputazione: ${rep}\n` +
+            `💰 Money: $${eco.money}\n` +
+            `🏦 Bank: $${eco.bank}\n` +
+            `⚠️ Warning: ${warns}/3\n\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `💭 Bio: _"${bio}"_\n` +
+            `📱 Stato: _"${about}"_\n` +
+            `━━━━━━━━━━━━━━━`;
+        
+        // Prova a inviare con foto profilo
+        try {
+            const profilePic = await contact.getProfilePicUrl();
+            const media = await MessageMedia.fromUrl(profilePic);
+            await client.sendMessage(msg.from, media, { caption: profileMsg });
+        } catch (e) {
+            // Se non c'è foto profilo, invia solo testo
+            await msg.reply(profileMsg);
+        }
+        
+    } catch (err) {
+        console.error('Errore profilo:', err);
+        await msg.reply('❌ Errore nel recuperare il profilo.');
+    }
+}
+
+
 
         // Risposta quiz/math se l'utente risponde con numeri
         else if (!isNaN(text) && text.trim() !== '') {
