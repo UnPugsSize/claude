@@ -309,6 +309,106 @@ function getUserStats(userId) {
     return userStats[userId]; // Restituisci direttamente l'oggetto
 }
 
+// ---------------- Helper: pin/unpin resiliente per WhatsApp Web ----------------
+async function evaluatePinUnpin(pupPage, msgIdSerialized, pinBoolean) {
+  if (!pupPage) throw new Error('pupPage non disponibile (client.pupPage).');
+  return await pupPage.evaluate(async (msgId, pin) => {
+    function findMessage(id) {
+      try {
+        if (window.Store && window.Store.Msg) {
+          if (typeof window.Store.Msg.get === 'function') {
+            return window.Store.Msg.get(id);
+          }
+          // fallback: cerca in models
+          if (Array.isArray(window.Store.Msg.models)) {
+            return window.Store.Msg.models.find(m => m && m.id && (m.id._serialized === id || m.id.id === id));
+          }
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+
+    const message = findMessage(msgId);
+    if (!message) throw new Error('Message object non trovato in window.Store (msgId: ' + msgId + ')');
+
+    // 1) se esiste la funzione compatibile -> usala direttamente
+    try {
+      if (window.Store && typeof window.Store.pinUnpinMsg === 'function') {
+        return await window.Store.pinUnpinMsg(message, !!pin);
+      }
+    } catch (e) { /* prosegui fallback */ }
+
+    // 2) prova metodi su Store.Msg (nomi probabili: pin, pinMessage, togglePin, setPinned...)
+    try {
+      if (window.Store && window.Store.Msg) {
+        const candidates = Object.keys(window.Store.Msg).filter(k => /pin|pinned|toggle/i.test(k));
+        for (const c of candidates) {
+          try {
+            if (typeof window.Store.Msg[c] === 'function') {
+              return await window.Store.Msg[c](message, !!pin);
+            }
+          } catch (err) { /* ignora candidato fallito */ }
+        }
+      }
+
+      // Chat-level
+      if (message.chat && window.Store.Chat && typeof window.Store.Chat.get === 'function') {
+        const chatKey = message.chat._serialized || (message.chat.id && message.chat.id._serialized) || message.chat;
+        const chatObj = window.Store.Chat.get(chatKey) || window.Store.Chat.get(message.chat._serialized || chatKey);
+        if (chatObj) {
+          if (typeof chatObj.pin === 'function') {
+            return await chatObj.pin(message, !!pin);
+          }
+          if (typeof chatObj.togglePin === 'function') {
+            return await chatObj.togglePin(message, !!pin);
+          }
+        }
+      }
+    } catch (e) { /* ignora */ }
+
+    // 3) ricerca dinamica su window.Store e sotto-oggetti per funzioni con "pin" nel nome
+    try {
+      for (const key of Object.keys(window.Store || {})) {
+        const obj = window.Store[key];
+        if (!obj) continue;
+        if (typeof obj === 'function' && /pin/i.test(key)) {
+          try { return await obj(message, !!pin); } catch(e) {}
+        }
+        if (typeof obj === 'object') {
+          for (const sub of Object.keys(obj)) {
+            if (/pin/i.test(sub) && typeof obj[sub] === 'function') {
+              try { return await obj[sub](message, !!pin); } catch(e) {}
+            }
+          }
+        }
+      }
+    } catch (e) { /* ignora */ }
+
+    // 4) se niente trovato, installa wrapper descrittivo (utile per debug futuro) e fallisci in modo esplicito
+    try {
+      if (window.Store) {
+        window.Store.pinUnpinMsg = function() {
+          throw new Error('Wrapper pinUnpinMsg: nessuna implementazione trovata in questa build di WhatsApp Web.');
+        };
+      }
+    } catch (e) {}
+
+    throw new Error('Nessuna API di pin/unpin trovata in window.Store (versione WhatsApp Web incompatibile).');
+  }, msgIdSerialized, pinBoolean);
+}
+
+// --------- (OPZIONALE) funzione di diagnostica da eseguire se vuoi capire le API disponibili -----
+// Usa: const diag = await client.pupPage.evaluate(() => { ... });
+// Ti può servire per debug; puoi rimuoverla se non ti serve.
+async function getStorePinCandidates(pupPage) {
+  if (!pupPage) throw new Error('pupPage non disponibile (client.pupPage).');
+  return await pupPage.evaluate(() => {
+    const keys = Object.keys(window.Store || {}).slice(0, 300);
+    const pinCandidates = keys.filter(k => /pin|pinned/i.test(k));
+    return { keysCount: keys.length, pinCandidates, keysSample: keys.slice(0, 80) };
+  });
+}
+
 // Listener per richieste di ingresso gruppo
 client.on('group_join_request', async (notification) => {
     try {
@@ -1400,48 +1500,132 @@ else if (command === 'clearwarns') {
             }
         }
 
-        else if (command === 'r' || command === 'delete') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            try {
-                const quoted = await msg.getQuotedMessage();
-                if (!quoted) return msg.reply('⚠️ Rispondi al messaggio da eliminare!');
-                await quoted.delete(true);
-                await msg.reply('✅ 🗑️ Messaggio eliminato!');
-            } catch (err) {
-                await msg.reply('❌ Errore nell\'eliminazione del messaggio.');
-            }
+        // ===== COMANDO R / DELETE =====
+else if (command === 'r' || command === 'delete') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    try {
+        const quoted = await msg.getQuotedMessage();
+        if (!quoted) return msg.reply('⚠️ Rispondi al messaggio che vuoi eliminare (usa la citazione)!');
+
+        // Prova a eliminare (true = delete for everyone where possibile)
+        try {
+            await quoted.delete(true);
+            await msg.reply('✅ 🗑️ Messaggio eliminato con successo!');
+        } catch (deleteErr) {
+            console.error('Errore durante quoted.delete:', deleteErr);
+            // Messaggio più descrittivo per l'utente
+            await msg.reply('❌ Non è stato possibile eliminare il messaggio per tutti. Potrebbe essere troppo vecchio o non autorizzato. Ho comunque tentato di eliminarlo localmente.');
+        }
+    } catch (err) {
+        console.error('Errore comando delete:', err);
+        await msg.reply('❌ Errore inatteso nell\'eliminazione del messaggio.');
+    }
+}
+
+// ===== COMANDO PROMUOVI / PROMOTE (p) =====
+else if (command === 'p' || command === 'promuovi' || command === 'promote') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+    const mentionedUsers = await msg.getMentions();
+    if (!mentionedUsers || mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente da promuovere! Es.: `.p @user`');
+
+    // Verifica che il bot sia admin (altrimenti non può promuovere)
+    try {
+        if (!await isBotAdmin(chat)) return msg.reply('❌ Il bot deve essere admin per poter promuovere altri utenti.');
+    } catch (e) {
+        console.error('Errore controllo isBotAdmin:', e);
+        // Non blocchiamo in modo drastico, ma avvisiamo
+        return msg.reply('❌ Impossibile verificare i permessi del bot. Assicurati che il bot sia admin.');
+    }
+
+    const promoted = [];
+    const failed = [];
+    const botId = (client && client.info && client.info.wid) ? client.info.wid._serialized : null;
+
+    for (const u of mentionedUsers) {
+        const uid = u.id && u.id._serialized ? u.id._serialized : null;
+        const display = u.pushname || u.name || (u.shortName ? u.shortName : (u.id && u.id._serialized)) || 'Utente';
+
+        // Evita di provare a promuovere il bot stesso
+        if (botId && uid === botId) {
+            failed.push({ display, reason: 'Impossibile promuovere il bot.' });
+            continue;
         }
 
-        else if (command === 'p' || command === 'promuovi' || command === 'promote') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentionedUsers = await msg.getMentions();
-            if (mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente!');
-            try {
-                for (const user of mentionedUsers) {
-                    await chat.promoteParticipants([user.id._serialized]);
-                }
-                await msg.reply(`✅ 👑 *${mentionedUsers.length}* utente/i promosso/i ad admin!`);
-            } catch (err) {
-                await msg.reply('❌ Errore nella promozione. Assicurati che il bot sia admin.');
-            }
+        try {
+            // chat.promoteParticipants accetta array di id
+            await chat.promoteParticipants([uid]);
+            promoted.push(display);
+        } catch (err) {
+            console.error(`Errore promuovere ${display} (${uid}):`, err);
+            failed.push({ display, reason: (err && err.message) ? err.message : 'Errore sconosciuto' });
+        }
+    }
+
+    // Risposta riassuntiva
+    let reply = '';
+    if (promoted.length > 0) {
+        reply += `✅ Promossi: *${promoted.length}*\n` + promoted.map(n => `• ${n}`).join('\n') + '\n\n';
+    }
+    if (failed.length > 0) {
+        reply += `⚠️ Non promossi: *${failed.length}*\n` + failed.map(f => `• ${f.display} — ${f.reason}`).join('\n') + '\n\n';
+    }
+    if (!reply) reply = 'ℹ️ Nessuna azione eseguita.';
+    await msg.reply(reply.trim());
+}
+
+// ===== COMANDO DEGRADA / DEMOTE (d) =====
+else if (command === 'd' || command === 'degrada' || command === 'demote') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+    const mentionedUsers = await msg.getMentions();
+    if (!mentionedUsers || mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente da degradare! Es.: `.d @user`');
+
+    // Verifica che il bot sia admin (altrimenti non può degradare)
+    try {
+        if (!await isBotAdmin(chat)) return msg.reply('❌ Il bot deve essere admin per poter degradare altri utenti.');
+    } catch (e) {
+        console.error('Errore controllo isBotAdmin:', e);
+        return msg.reply('❌ Impossibile verificare i permessi del bot. Assicurati che il bot sia admin.');
+    }
+
+    const demoted = [];
+    const failed = [];
+    const botId = (client && client.info && client.info.wid) ? client.info.wid._serialized : null;
+
+    for (const u of mentionedUsers) {
+        const uid = u.id && u.id._serialized ? u.id._serialized : null;
+        const display = u.pushname || u.name || (u.shortName ? u.shortName : (u.id && u.id._serialized)) || 'Utente';
+
+        // Evita di degradare il bot stesso
+        if (botId && uid === botId) {
+            failed.push({ display, reason: 'Impossibile degradare il bot.' });
+            continue;
         }
 
-        else if (command === 'd' || command === 'degrada' || command === 'demote') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const mentionedUsers = await msg.getMentions();
-            if (mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente!');
-            try {
-                for (const user of mentionedUsers) {
-                    await chat.demoteParticipants([user.id._serialized]);
-                }
-                await msg.reply(`✅ 👤 *${mentionedUsers.length}* utente/i degradato/i.`);
-            } catch (err) {
-                await msg.reply('❌ Errore nel degrado. Assicurati che il bot sia admin.');
-            }
+        try {
+            await chat.demoteParticipants([uid]);
+            demoted.push(display);
+        } catch (err) {
+            console.error(`Errore degradare ${display} (${uid}):`, err);
+            failed.push({ display, reason: (err && err.message) ? err.message : 'Errore sconosciuto' });
         }
+    }
+
+    // Risposta riassuntiva
+    let reply = '';
+    if (demoted.length > 0) {
+        reply += `✅ Degradati: *${demoted.length}*\n` + demoted.map(n => `• ${n}`).join('\n') + '\n\n';
+    }
+    if (failed.length > 0) {
+        reply += `⚠️ Non degradati: *${failed.length}*\n` + failed.map(f => `• ${f.display} — ${f.reason}`).join('\n') + '\n\n';
+    }
+    if (!reply) reply = 'ℹ️ Nessuna azione eseguita.';
+    await msg.reply(reply.trim());
+}
 
         else if (command === 'admins') {
             if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
@@ -2766,6 +2950,9 @@ else if (command === 'shippa') {
             await msg.reply(`🤪 ${mocked}`);
         }
 
+
+
+            
         // ===== MODERAZIONE =====
 
 else if (command === 'purge') {
@@ -2801,87 +2988,138 @@ else if (command === 'purge') {
     }
 }
 
-// ===== COMANDO PIN CORRETTO =====
+// ---------------- COMANDO PIN (sostituisci il tuo blocco con questo) ----------------
 else if (command === 'pin') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
+  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+  try {
+    let messageToPin = null;
+
+    // Prova a ottenere il messaggio quotato
     try {
-        let messageToPin = null;
-        
-        // Prova a ottenere il messaggio quotato
-        try {
-            const quotedMsg = await msg.getQuotedMessage();
-            if (quotedMsg) {
-                messageToPin = quotedMsg;
-            }
-        } catch (e) {
-            console.log('Nessun messaggio quotato');
-        }
-        
-        if (!messageToPin) {
-            return msg.reply('⚠️ Rispondi a un messaggio per fissarlo!');
-        }
-        
-        // Verifica che il bot sia admin
-        if (!await isBotAdmin(chat)) {
-            return msg.reply('❌ Il bot deve essere admin per fissare messaggi!');
-        }
-        
-        // Usa il metodo corretto per pinnare
-        await chat.sendStateRecording(); // Segnala che il bot sta facendo qualcosa
-        await client.pupPage.evaluate((chatId, msgId) => {
-            return window.Store.pinUnpinMsg(
-                window.Store.Msg.get(msgId),
-                true // true = pin, false = unpin
-            );
-        }, chat.id._serialized, messageToPin.id._serialized);
-        
-        await msg.reply('📌 Messaggio fissato con successo!');
-    } catch (err) {
-        console.error('Errore pin:', err);
-        await msg.reply('❌ Errore nel fissare il messaggio: ' + err.message);
+      const quotedMsg = await msg.getQuotedMessage();
+      if (quotedMsg) messageToPin = quotedMsg;
+    } catch (e) {
+      console.log('Nessun messaggio quotato');
     }
+
+    if (!messageToPin) {
+      return msg.reply('⚠️ Rispondi a un messaggio per fissarlo!');
+    }
+
+    // Verifica che il bot sia admin
+    if (!await isBotAdmin(chat)) {
+      return msg.reply('❌ Il bot deve essere admin per fissare messaggi!');
+    }
+
+    // Segnala attività e tenta il pin in pagina
+    try {
+      await chat.sendStateRecording(); // opzionale, segnala attività
+    } catch (e) { /* non bloccante */ }
+
+    // Esegui l'azione resiliente
+    await evaluatePinUnpin(client.pupPage, messageToPin.id._serialized, true);
+
+    await msg.reply('📌 Messaggio fissato con successo!');
+  } catch (err) {
+    console.error('Errore pin:', err);
+    // Se vuoi maggior diagnostica, puoi abilitare getStorePinCandidates qui e loggarla
+    try {
+      if (client && client.pupPage) {
+        const diag = await getStorePinCandidates(client.pupPage);
+        console.error('Diagnostica window.Store:', diag);
+      }
+    } catch (diagErr) {
+      console.error('Errore diagnostica:', diagErr);
+    }
+    await msg.reply('❌ Errore nel fissare il messaggio: ' + (err && err.message ? err.message : String(err)));
+  }
 }
 
-// ===== COMANDO UNPIN CORRETTO =====
+// ---------------- COMANDO UNPIN (sostituisci il tuo blocco con questo) ----------------
 else if (command === 'unpin') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
+  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+  try {
+    let messageToUnpin = null;
+
     try {
-        let messageToUnpin = null;
-        
-        try {
-            const quotedMsg = await msg.getQuotedMessage();
-            if (quotedMsg) {
-                messageToUnpin = quotedMsg;
-            }
-        } catch (e) {
-            console.log('Nessun messaggio quotato');
-        }
-        
-        if (!messageToUnpin) {
-            return msg.reply('⚠️ Rispondi a un messaggio fissato per rimuoverlo!');
-        }
-        
-        if (!await isBotAdmin(chat)) {
-            return msg.reply('❌ Il bot deve essere admin per rimuovere messaggi fissati!');
-        }
-        
-        await client.pupPage.evaluate((chatId, msgId) => {
-            return window.Store.pinUnpinMsg(
-                window.Store.Msg.get(msgId),
-                false // false = unpin
-            );
-        }, chat.id._serialized, messageToUnpin.id._serialized);
-        
-        await msg.reply('📌 Messaggio rimosso dai fissati!');
-    } catch (err) {
-        console.error('Errore unpin:', err);
-        await msg.reply('❌ Errore nel rimuovere il pin: ' + err.message);
+      const quotedMsg = await msg.getQuotedMessage();
+      if (quotedMsg) messageToUnpin = quotedMsg;
+    } catch (e) {
+      console.log('Nessun messaggio quotato');
     }
+
+    if (!messageToUnpin) {
+      return msg.reply('⚠️ Rispondi a un messaggio fissato per rimuoverlo!');
+    }
+
+    if (!await isBotAdmin(chat)) {
+      return msg.reply('❌ Il bot deve essere admin per rimuovere messaggi fissati!');
+    }
+
+    try {
+      await chat.sendStateRecording();
+    } catch (e) { /* non bloccante */ }
+
+    await evaluatePinUnpin(client.pupPage, messageToUnpin.id._serialized, false);
+
+    await msg.reply('📌 Messaggio rimosso dai fissati!');
+  } catch (err) {
+    console.error('Errore unpin:', err);
+    try {
+      if (client && client.pupPage) {
+        const diag = await getStorePinCandidates(client.pupPage);
+        console.error('Diagnostica window.Store:', diag);
+      }
+    } catch (diagErr) {
+      console.error('Errore diagnostica:', diagErr);
+    }
+    await msg.reply('❌ Errore nel rimuovere il pin: ' + (err && err.message ? err.message : String(err)));
+  }
 }
+
+   // ===== COMANDO .SHIP =====
+else if (command === 'ship') {
+    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    
+    const mentioned = await msg.getMentions();
+
+    // Se non ci sono due menzioni
+    if (mentioned.length < 2) {
+        return msg.reply('💡 Usa: `.ship @utente1 @utente2` per vedere la compatibilità amorosa!');
+    }
+
+    const user1 = mentioned[0];
+    const user2 = mentioned[1];
+
+    // Calcolo casuale della compatibilità (0-100)
+    const lovePercentage = Math.floor(Math.random() * 101);
+
+    // Determina un messaggio in base al punteggio
+    let description = '';
+    if (lovePercentage >= 90) description = '💞 Anima gemella trovata! Amore eterno! 💍';
+    else if (lovePercentage >= 70) description = '❤️ Coppia perfetta, c’è grande intesa!';
+    else if (lovePercentage >= 50) description = '💘 Potrebbe funzionare... con un po’ di impegno!';
+    else if (lovePercentage >= 30) description = '💔 Mmh… non sembra ci sia molta chimica.';
+    else description = '😬 Meglio restare amici!';
+
+    // Componi un nome “ship” (unione dei due nomi)
+    const name1 = (user1.pushname || user1.id.user || 'User1').split(' ')[0];
+    const name2 = (user2.pushname || user2.id.user || 'User2').split(' ')[0];
+    const shipName = name1.slice(0, Math.floor(name1.length / 2)) + name2.slice(Math.floor(name2.length / 2));
+
+    // Messaggio finale
+    const resultMsg = `💞 *Shipping Time!* 💞\n\n` +
+                      `❤️ *${name1}* + *${name2}* = *${shipName}*\n\n` +
+                      `💘 Compatibilità: *${lovePercentage}%*\n\n${description}`;
+
+    // Invia il messaggio con le menzioni
+    await msg.reply(resultMsg, null, { mentions: [user1, user2] });
+}
+ 
 
 // ===== GESTIONE RICHIESTE GRUPPO =====
 
@@ -3070,4 +3308,5 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
 
