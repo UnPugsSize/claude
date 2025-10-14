@@ -556,8 +556,6 @@ Usa i pulsanti qui sotto per navigare rapidamente nei menu!
 ╚═══════════════════════╝
 
 👥 *GESTIONE UTENTI:*
-• .ban @user - 🚫 Banna utente
-• .unban @user - ✅ Sbanna utente
 • .kick @user - 👢 Rimuovi utente
 • .muta @user [tempo] - 🔇 Muta utente
 • .smuta @user - 🔊 Smuta utente
@@ -802,108 +800,7 @@ else if (command === 'hidetag') {
     }
 }
 
-// BAN UTENTE
-else if (command === 'ban') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per bannare utenti!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da bannare!\n\n💡 Esempio: `.ban @utente`');
-    
-    try {
-        const toBanId = mentioned[0].id._serialized;
-        const toBanNumber = toBanId.split('@')[0];
-        const toBanName = mentioned[0].pushname || toBanNumber;
-        
-        initGroup(chat.id._serialized);
-        
-        // Verifica se già bannato
-        const alreadyBanned = groupData[chat.id._serialized].bannedUsers.some(
-            id => id.split('@')[0] === toBanNumber
-        );
-        
-        if (alreadyBanned) {
-            return msg.reply(`⚠️ *${toBanName}* è già bannato!`);
-        }
-        
-        // Aggiungi alla lista ban
-        groupData[chat.id._serialized].bannedUsers.push(toBanId);
-        saveData();
-        
-        // Rimuovi dal gruppo
-        const freshChat = await client.getChatById(chat.id._serialized);
-        const participant = freshChat.participants.find(
-            p => p.id._serialized.split('@')[0] === toBanNumber
-        );
-        
-        if (!participant) {
-            return msg.reply('❌ Utente non trovato nel gruppo!');
-        }
-        
-        await chat.removeParticipants([participant.id._serialized]);
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  🚫 *UTENTE BANNATO*  ║
-╚═══════════════════════╝
 
-👤 Utente: *${toBanName}*
-📱 Numero: ${toBanNumber}
-⚠️ Status: *BANNATO PERMANENTEMENTE*
-
-━━━━━━━━━━━━━━━━━━━━━
-Se tenta di rientrare sarà rimosso automaticamente.`
-        );
-        
-    } catch (err) {
-        console.error('Errore ban:', err);
-        await msg.reply('❌ Errore nel bannare l\'utente. Verifica che il bot sia admin.');
-    }
-}
-
-// UNBAN UTENTE
-else if (command === 'unban') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da sbannare!\n\n💡 Esempio: `.unban @utente`');
-    
-    try {
-        const toUnbanNumber = mentioned[0].id._serialized.split('@')[0];
-        const toUnbanName = mentioned[0].pushname || toUnbanNumber;
-        
-        initGroup(chat.id._serialized);
-        const idx = groupData[chat.id._serialized].bannedUsers.findIndex(
-            id => id.split('@')[0] === toUnbanNumber
-        );
-        
-        if (idx === -1) {
-            return msg.reply(`⚠️ *${toUnbanName}* non è bannato!`);
-        }
-        
-        groupData[chat.id._serialized].bannedUsers.splice(idx, 1);
-        saveData();
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  ✅ *UTENTE SBANNATO* ║
-╚═══════════════════════╝
-
-👤 Utente: *${toUnbanName}*
-📱 Numero: ${toUnbanNumber}
-✨ Status: *BAN RIMOSSO*
-
-━━━━━━━━━━━━━━━━━━━━━
-L'utente può ora rientrare nel gruppo.`
-        );
-        
-    } catch (err) {
-        console.error('Errore unban:', err);
-        await msg.reply('❌ Errore durante lo sbannamento.');
-    }
-}
 
 // KICK UTENTE
 else if (command === 'kick' || command === 'remove') {
@@ -3173,3 +3070,4 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
