@@ -309,6 +309,32 @@ function getUserStats(userId) {
     return userStats[userId]; // Restituisci direttamente l'oggetto
 }
 
+function formatTime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    let result = '';
+    if (d > 0) result += `${d}g `;
+    if (h > 0) result += `${h}h `;
+    if (m > 0) result += `${m}m `;
+    if (s > 0) result += `${s}s`;
+    return result.trim();
+}
+
+// Alias per compatibilità
+const formatUptime = formatTime;
+
+// Funzione helper per ottenere il nome visualizzato di un utente
+async function getUserDisplayName(userId, chat) {
+    try {
+        const contact = await client.getContactById(userId);
+        return contact.pushname || contact.name || userId.split('@')[0];
+    } catch (err) {
+        return userId.split('@')[0];
+    }
+}
+
 // ---------------- Helper: pin/unpin resiliente per WhatsApp Web ----------------
 async function evaluatePinUnpin(pupPage, msgIdSerialized, pinBoolean) {
   if (!pupPage) throw new Error('pupPage non disponibile (client.pupPage).');
@@ -588,276 +614,204 @@ async function sendListOrFallback(client, to, text, sections, buttonText, title)
 }
 
 // ========== MENU PRINCIPALE ==========
-        if (['menu', 'help', 'comandi'].includes(command)) {
-            const menuText = `
+if (['menu', 'help', 'comandi'].includes(command)) {
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+    const menuText = `
 ╔═══════════════════════╗
 ║  🤖 *BOT WHATSAPP*   ║
 ║  *MENU PRINCIPALE*    ║
 ╚═══════════════════════╝
 
-📋 *USA I PULSANTI SOTTO PER NAVIGARE*
+📋 *NAVIGAZIONE RAPIDA:*
+Usa i pulsanti sotto o digita i comandi
 
-🎯 *COMANDI RAPIDI:*
-• .moderazione - Gestisci gruppo 👮
-• .economia - Sistema economico 💰
-• .giochi - Giochi disponibili 🎮
-• .fun - Comandi divertenti 🎪
+🎯 *CATEGORIE DISPONIBILI:*
+• \`.moderazione\` - Gestione gruppo 👮
+• \`.economia\` - Sistema economico 💰
+• \`.giochi\` - Giochi e intrattenimento 🎮
+• \`.fun\` - Comandi divertenti 🎪
+• \`.utility\` - Strumenti utili 🔧
 
-📊 *STATISTICHE:*
-• .level - Il tuo livello 🏆
-• .profilo - Il tuo profilo 👤
-• .top - Classifiche 🏅
+📊 *INFORMAZIONI:*
+• \`.level\` - Mostra il tuo livello
+• \`.profilo\` - Il tuo profilo completo
+• \`.top\` - Classifiche del gruppo
+• \`.stats\` - Statistiche bot
 
-❓ *AIUTO:*
-• .help [comando] - Info comando
-• .info - Info sul bot
-• .ping - Testa il bot
+❓ *SUPPORTO:*
+• \`.help [comando]\` - Info su comando
+• \`.info\` - Info dettagliate bot
+• \`.ping\` - Verifica latenza
 
 💡 *SUGGERIMENTO:*
-Usa i pulsanti qui sotto per navigare rapidamente nei menu!
+Usa i pulsanti interattivi per una navigazione più veloce!
 
-🔧 *Versione Bot:* 2.0 Premium
-⏰ *Uptime:* ${formatTime(Math.floor((Date.now() - startTime) / 1000))}
+━━━━━━━━━━━━━━━━━━━━━
+🔧 Versione: *2.5 Premium*
+⏰ Uptime: *${formatUptime(uptime)}*
+👥 Utenti attivi: *${Object.keys(userStats).length}*
 `;
 
-            const sections = [
-                {
-                    title: '👮 MODERAZIONE',
-                    rows: [
-                        { id: '.moderazione', title: '👮 Moderazione', description: 'Comandi admin e moderazione' },
-                        { id: '.automod', title: '🛡️ Auto-Moderazione', description: 'Sistema automatico' }
-                    ]
-                },
-                {
-                    title: '💰 SISTEMA',
-                    rows: [
-                        { id: '.economia', title: '💰 Economia', description: 'Soldi, lavoro, banca' },
-                        { id: '.giochi', title: '🎮 Giochi', description: 'Slot, quiz, indovina' }
-                    ]
-                },
-                {
-                    title: '🎉 EXTRA',
-                    rows: [
-                        { id: '.fun', title: '🎪 Fun & Social', description: 'Comandi divertenti' },
-                    ]
-                }
-            ];
-
-            // Invia menu interattivo o fallback testuale
-            await sendListOrFallback(client, msg.from, menuText, sections, '📋 Seleziona Menu', '🤖 Bot Menu');
-            return;
+    const sections = [
+        {
+            title: '👮 GESTIONE',
+            rows: [
+                { id: '.moderazione', title: '👮 Moderazione', description: 'Comandi admin completi' },
+                { id: '.automod', title: '🛡️ Auto-Moderazione', description: 'Protezione automatica' },
+                { id: '.config', title: '⚙️ Configurazione', description: 'Impostazioni gruppo' }
+            ]
+        },
+        {
+            title: '💰 SISTEMA',
+            rows: [
+                { id: '.economia', title: '💰 Economia', description: 'Sistema monetario completo' },
+                { id: '.giochi', title: '🎮 Giochi', description: 'Slot, quiz e altro' },
+                { id: '.livelli', title: '🏆 Livelli', description: 'Sistema XP e ricompense' }
+            ]
+        },
+        {
+            title: '🎉 SOCIAL',
+            rows: [
+                { id: '.fun', title: '🎪 Fun', description: 'Comandi divertenti' },
+                { id: '.social', title: '💬 Social', description: 'Interazione utenti' },
+                { id: '.utility', title: '🔧 Utility', description: 'Strumenti vari' }
+            ]
         }
+    ];
 
-        // ========== MENU MODERAZIONE ==========
-        else if (command === 'moderazione' || command === 'mod') {
-            const modText = `
+    await sendListOrFallback(client, msg.from, menuText, sections, '📋 Menu Principale', '🤖 Bot WhatsApp');
+    return;
+}
+
+// ========== MENU MODERAZIONE ==========
+else if (command === 'moderazione' || command === 'mod') {
+    const modText = `
 ╔═══════════════════════╗
 ║ 👮 *MODERAZIONE*     ║
 ╚═══════════════════════╝
 
 👥 *GESTIONE UTENTI:*
-• .kick @user - 👢 Rimuovi utente
-• .muta @user [tempo] - 🔇 Muta utente
-• .smuta @user - 🔊 Smuta utente
-• .warn @user [motivo] - ⚠️ Avvisa utente
-• .unwarn @user - ✅ Rimuovi warn
-• .warnings @user - 📋 Vedi warns
-• .clearwarns @user - 🗑️ Cancella warns
+• \`.kick @user\` - Rimuovi utente
+• \`.ban @user\` - Banna permanentemente
+• \`.unban @user\` - Rimuovi ban
+• \`.muta @user [tempo]\` - Silenzia utente
+• \`.smuta @user\` - Rimuovi mute
+• \`.warn @user [motivo]\` - Avvisa utente
+• \`.unwarn @user\` - Rimuovi warn
+• \`.warnings [@user]\` - Vedi warns
+• \`.clearwarns @user\` - Resetta warns
 
 👑 *GESTIONE ADMIN:*
-• .p @user - 👑 Promuovi admin
-• .d @user - 👤 Degrada admin
-• .admins - 👥 Lista admin
-• .promote-all - 👑 Promuovi tutti
-• .demote-all - 👤 Degrada tutti
+• \`.p @user\` - Promuovi admin
+• \`.d @user\` - Degrada admin
+• \`.admins\` - Lista admin
+• \`.promote-all\` - Promuovi tutti
+• \`.demote-all\` - Degrada tutti
 
-🛡️ *PROTEZIONE GRUPPO:*
-• .antilink on/off - 🔗 Blocca link
-• .antibot on/off - 🤖 Blocca bot
-• .antispam on/off - 💥 Anti spam
-• .antiraid on/off - 🛡️ Anti raid
-• .slowmode [sec] - ⏱️ Rallenta chat
-• .lock - 🔒 Blocca impostazioni
-• .unlock - 🔓 Sblocca impostazioni
+🛡️ *PROTEZIONE:*
+• \`.antilink on/off\` - Blocca link
+• \`.antibot on/off\` - Blocca bot
+• \`.antispam on/off\` - Anti spam
+• \`.antiraid on/off\` - Anti raid
+• \`.antiflood on/off\` - Anti flood
+• \`.slowmode [sec]\` - Rallenta chat
 
 📝 *CONTENUTI:*
-• .blocca [parola] - 🚫 Blocca parola
-• .sblocca [parola] - ✅ Sblocca parola
-• .listaparole - 📋 Lista parole bloccate
-• .r - 🗑️ Elimina messaggio quotato
+• \`.blocca [parola]\` - Blocca parola
+• \`.sblocca [parola]\` - Sblocca parola
+• \`.listaparole\` - Parole bloccate
+• \`.r\` - Elimina messaggio
 
 ⚙️ *CONFIGURAZIONE:*
-• .regole [testo] - 📜 Imposta regole
-• .vediregole - 📖 Visualizza regole
-• .chiudi - 🔒 Solo admin scrivono
-• .apri - 🔓 Tutti scrivono
-• .setwelcome [msg] - 👋 Messaggio benvenuto
-• .setgoodbye [msg] - 👋 Messaggio addio
-• .setmaxwarns [num] - ⚠️ Max warn prima ban
+• \`.regole [testo]\` - Imposta regole
+• \`.vediregole\` - Mostra regole
+• \`.chiudi\` - Solo admin scrivono
+• \`.apri\` - Tutti scrivono
+• \`.lock\` - Blocca impostazioni
+• \`.unlock\` - Sblocca impostazioni
+• \`.setwelcome [msg]\` - Msg benvenuto
+• \`.setgoodbye [msg]\` - Msg addio
+• \`.setmaxwarns [num]\` - Max warn
 
-📊 *INFORMAZIONI:*
-• .info - 📊 Info gruppo
-• .mutati - 🔇 Lista utenti mutati
-• .bannati - 🚫 Lista utenti bannati
-• .attivita - 📈 Attività gruppo
+📊 *STATISTICHE:*
+• \`.info\` - Info gruppo
+• \`.mutati\` - Lista mutati
+• \`.bannati\` - Lista bannati
+• \`.attivita\` - Attività gruppo
+• \`.logs\` - Ultimi eventi
 
 🎯 *AZIONI RAPIDE:*
-• .tag [msg] - 📢 Tagga tutti
-• .hidetag [msg] - 👻 Tag nascosto
-• .purge [num] - 🗑️ Elimina messaggi
-• .pin - 📌 Fissa messaggio
-• .unpin - 📌 Togli fissa
+• \`.tag [msg]\` - Tagga tutti
+• \`.hidetag [msg]\` - Tag nascosto
+• \`.purge [num]\` - Elimina messaggi
+• \`.pin\` - Fissa messaggio
+• \`.unpin\` - Rimuovi fissa
 
-💡 *SUGGERIMENTO:*
-Usa .automod per configurare la moderazione automatica!
+━━━━━━━━━━━━━━━━━━━━━
+💡 Usa \`.automod\` per configurare la protezione automatica!
 `;
-            await msg.reply(modText);
-            return;
-        }
+    await msg.reply(modText);
+    return;
+}
 
 // ========== MENU AUTO-MODERAZIONE ==========
 if (command === 'automod' || command === 'automoderatore') {
-  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-  
-  const automodText = `
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    const automod = automodConfig[chat.id._serialized] || {};
+    
+    const automodText = `
 ╔═══════════════════════╗
-║ 🛡️ *AUTO-MOD*       ║
+║ 🛡️ *AUTO-MODERAZIONE*║
 ╚═══════════════════════╝
 
-*STATO ATTUALE:*
-🔗 Antilink: ${groupInfo.antilink ? '✅ ON' : '❌ OFF'}
-🤖 Antibot: ${groupInfo.antiBot ? '✅ ON' : '❌ OFF'}
-💥 Antispam: ${groupInfo.antiSpam ? '✅ ON' : '❌ OFF'}
-🛡️ Antiraid: ${automod?.antiRaid ? '✅ ON' : '❌ OFF'}
-💥 Antiflood: ${automod?.antiFlood ? '✅ ON' : '❌ OFF'}
-⏱️ Slowmode: ${groupInfo.slowmode}s
-⚠️ Max Warns: ${groupInfo.maxWarns}
+*📊 STATO PROTEZIONI:*
+┌─────────────────────┐
+│ 🔗 Antilink: ${g.antilink ? '✅ ON' : '❌ OFF'}
+│ 🤖 Antibot: ${g.antiBot ? '✅ ON' : '❌ OFF'}
+│ 💥 Antispam: ${g.antiSpam ? '✅ ON' : '❌ OFF'}
+│ 🛡️ Antiraid: ${automod.antiRaid ? '✅ ON' : '❌ OFF'}
+│ 💥 Antiflood: ${automod.antiFlood ? '✅ ON' : '❌ OFF'}
+│ ⏱️ Slowmode: ${g.slowmode}s
+│ ⚠️ Max Warns: ${g.maxWarns || 3}
+└─────────────────────┘
 
-*COMANDI CONFIGURAZIONE:*
-• .antilink on/off - Attiva/disattiva antilink
-• .antibot on/off - Attiva/disattiva antibot
-• .antispam on/off - Attiva/disattiva antispam
-• .antiraid on/off - Attiva/disattiva antiraid
-• .antiflood on/off [msg] [sec] - Config antiflood
-• .slowmode [secondi] - Imposta slowmode
-• .setmaxwarns [numero] - Max warn
+*⚙️ CONFIGURAZIONE:*
+• \`.antilink on/off\` - Rimuove link
+• \`.antibot on/off\` - Rimuove bot
+• \`.antispam on/off\` - Blocca spam
+• \`.antiraid on/off\` - Protegge da raid
+• \`.antiflood on/off [msg] [sec]\` - Config flood
+• \`.slowmode [sec]\` - Ritardo messaggi
+• \`.setmaxwarns [num]\` - Warn prima ban
 
-*ESEMPIO ANTIFLOOD:*
-.antiflood on 5 10
-(Max 5 messaggi in 10 secondi)
+*📝 ESEMPI:*
+┌─────────────────────┐
+│ Antiflood:
+│ \`.antiflood on 5 10\`
+│ (Max 5 msg in 10 sec)
+│
+│ Slowmode:
+│ \`.slowmode 5\`
+│ (1 msg ogni 5 sec)
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Le protezioni attive rimuovono automaticamente contenuti violanti!
 `;
-  await msg.reply(automodText);
-  return;
+    await msg.reply(automodText);
+    return;
 }
 
-// ========== MENU ECONOMIA ==========
-if (command === 'economia' || command === 'eco') {
-  const ecoText = `
-╔═══════════════════════╗
-║ 💰 *ECONOMIA*        ║
-╚═══════════════════════╝
-
-.soldi - Vedi saldo
-.daily - Bonus giornaliero
-.lavora - Lavora per soldi
-.weekly - Bonus settimanale
-.monthly - Bonus mensile
-.regalo @user [amt] - Dona soldi
-.ruba @user - Ruba soldi
-.deposita [amt] - Deposita in banca
-.preleva [amt] - Preleva da banca
-.crimine - Commetti crimine
-.scommessa [amt] - Scommetti
-.multiplica [amt] - Moltiplica soldi
-.investimento [amt] - Investi
-.prestito [amt] - Chiedi prestito
-.ripaga - Ripaga prestito
-
-`;
-  await msg.reply(ecoText);
-  return;
-}
-
-// ========== MENU GIOCHI ==========
-if (command === 'giochi' || command === 'games') {
-  const gamesText = `
-╔═══════════════════════╗
-║ 🎮 *GIOCHI*          ║
-╚═══════════════════════╝
-
-.rps [scelta] - Morra cinese
-.slot - Slot machine
-.indovina [num] - Indovina numero
-.8ball [domanda] - Palla magica
-.scelta op1|op2 - Scegli random
-.dado - Lancia dado
-.moneta - Lancia moneta
-.blackjack - Gioca blackjack
-.roulette [color/num] - Roulette
-.quiz - Quiz random
-.trivia - Trivia
-.math - Matematica veloce
-.memory - Gioco memoria
-.tictactoe @user - Tris
-.impiccato - Impiccato
-.indovinachi - Indovina personaggio
-.creacoppia
-.ship (user1) (user2)
-.amore
-`;
-  await msg.reply(gamesText);
-  return;
-}
-
-// ========== MENU FUN ==========
-if (command === 'fun' || command === 'divertimento') {
-  const funText = `
-╔═══════════════════════╗
-║ 🎪 *FUN & SOCIAL*    ║
-╚═══════════════════════╝
-
-.meme - Meme random
-.fact - Fatto random
-.quote - Citazione
-.joke - Barzelletta
-.consiglio - Consiglio random
-.sfida @user - Sfida utente
-.complimento @user - Complimento
-.insulta @user - Insulta (fun)
-.amore @user - Calcolatore amore
-.ship @user1 @user2 - Shippa due user
-.faketext [testo] - Testo fake
-.ascii [testo] - Testo ASCII
-.reverse [testo] - Testo invertito
-.caps [testo] - MAIUSCOLO
-.mock [testo] - tEsTo AlTeRnAtO
-`;
-  await msg.reply(funText);
-  return;
-}
-
-
-       // COMANDO: .tag / .tagall
+// ========== COMANDO: .tag / .tagall (gestione testuale + media + sticker) ==========
 else if (command === 'tag' || command === 'tagall') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
 
-    const messageText = args.join(' ').trim() || '📢 Attenzione!';
-    const mentions = [];
-
-    // Raccogli tutti i contatti per le menzioni
-    for (let participant of chat.participants) {
-        try {
-            const contact = await client.getContactById(participant.id._serialized);
-            mentions.push(contact);
-        } catch (e) {
-            // Se non riesce a ottenere il contatto, salta
-            console.log('Impossibile ottenere contatto:', participant.id ? participant.id._serialized : participant);
-        }
-    }
-
-    // Se il comando è stato inviato come risposta, recupera il messaggio quotato
+    // Recupera il messaggio quotato se presente
     let quotedMsgObj = null;
     if (msg.hasQuotedMsg) {
         try {
@@ -868,205 +822,1144 @@ else if (command === 'tag' || command === 'tagall') {
         }
     }
 
+    // Se NON ci sono argomenti E NON c'è un messaggio quotato -> non fare nulla (silenzioso)
+    if (args.length === 0 && !quotedMsgObj) {
+        return;
+    }
+
+    // Raccogli tutti i contatti del gruppo per le menzioni
+    const mentions = [];
     try {
-        // Se esiste un messaggio quotato: invia il messaggio taggando tutti e quotando quel messaggio
-        if (quotedMsgObj) {
-            // Invia il testo (puoi includere anche il corpo del messaggio quotato se vuoi)
-            await chat.sendMessage(messageText, { mentions, quoted: quotedMsgObj });
-        } else {
-            // Nessuna risposta: invia normalmente taggando tutti
-            await chat.sendMessage(messageText, { mentions });
+        for (let participant of chat.participants) {
+            try {
+                const jid = participant.id && participant.id._serialized ? participant.id._serialized : participant;
+                const contact = await client.getContactById(jid);
+                if (contact) mentions.push(contact);
+            } catch (e) {
+                console.log('Impossibile ottenere contatto durante tag:', participant.id ? participant.id._serialized : participant, e);
+            }
         }
+    } catch (e) {
+        console.error('Errore raccogliendo partecipanti per .tag:', e);
+    }
+
+    // Se sono presenti argomenti (".tag ciao") -> invia semplice testo con mentions
+    if (args.length > 0) {
+        const textToSend = args.join(' ').trim() || '📢';
+        try {
+            await chat.sendMessage(textToSend, { mentions });
+        } catch (err) {
+            console.error('Errore invio .tag con testo:', err);
+            await msg.reply('❌ Errore durante l\'invio del tag.');
+        }
+        return;
+    }
+
+    // Qui: non ci sono argomenti ma c'è un messaggio quotato -> gestisci in base al tipo
+    try {
+        // Se il messaggio quotato è testuale -> invia il testo (senza mostrare la lista di nomi)
+        if (quotedMsgObj.type === 'chat' || (typeof quotedMsgObj.body === 'string' && quotedMsgObj.body.trim().length > 0)) {
+            const textToSend = quotedMsgObj.body || '📢 Messaggio condiviso';
+            await chat.sendMessage(textToSend, { mentions });
+            return;
+        }
+
+        // Se è uno sticker -> forward + notifica con mentions (i sticker non supportano caption/mentions)
+        if (quotedMsgObj.type === 'sticker') {
+            try {
+                await quotedMsgObj.forward(chat.id);
+                // Notifica breve con mentions (minimale)
+                await chat.sendMessage('[Sticker condiviso]', { mentions });
+            } catch (e) {
+                console.error('Errore forwarding sticker:', e);
+                // fallback: invia un messaggio descrittivo con mentions
+                await chat.sendMessage('[Sticker condiviso]', { mentions });
+            }
+            return;
+        }
+
+        // Se è media (image, video, audio, document, ecc.) -> prova a scaricare e reinviare con mentions nella caption
+        if (quotedMsgObj.hasMedia) {
+            try {
+                const media = await quotedMsgObj.downloadMedia();
+                // tenta di usare la stessa caption se presente, altrimenti una minima descrizione
+                const caption = quotedMsgObj.caption || quotedMsgObj.body || '';
+                // Reinvia il media con mentions (whatsapp-web.js supporta caption + mentions su immagini/video/documenti)
+                await chat.sendMessage(media, { caption: caption, mentions });
+                return;
+            } catch (e) {
+                console.error('Errore download/reinvio media:', e);
+                // fallback: forward + notifica con mentions
+                try {
+                    await quotedMsgObj.forward(chat.id);
+                    await chat.sendMessage('[Media condiviso]', { mentions });
+                    return;
+                } catch (ee) {
+                    console.error('Fallback forward media fallito:', ee);
+                    await msg.reply('❌ Impossibile condividere il media con mentions.');
+                    return;
+                }
+            }
+        }
+
+        // Caso generico (non riconosciuto): invia fallback testuale taggando tutti
+        await chat.sendMessage('[Messaggio condiviso]', { mentions });
     } catch (err) {
-        console.error('Errore comando .tag:', err);
+        console.error('Errore comando .tag (gestione quote/media):', err);
         await msg.reply('❌ Errore durante il tag di tutti i membri.');
     }
 }
 
-// HIDETAG - Tag nascosto
+        
+
+// ========== HIDETAG ==========
 else if (command === 'hidetag') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
     
     try {
-        const text = args.join(' ') || '👻 Messaggio nascosto';
+        const text = args.join(' ') || '👻 *Messaggio nascosto*';
         const mentions = chat.participants.map(p => p.id._serialized);
         
         await chat.sendMessage(text, { mentions });
+        await msg.delete(true); // Elimina comando
+        
+        console.log(`[HIDETAG] Admin ${msg.author} ha inviato messaggio nascosto`);
         
     } catch (err) {
         console.error('Errore hidetag:', err);
-        await msg.reply('❌ Errore durante l\'invio del messaggio nascosto.');
+        await msg.reply('❌ Errore durante l\'invio del messaggio.');
     }
 }
 
-
-
-// KICK UTENTE
+// ========== KICK ==========
 else if (command === 'kick' || command === 'remove') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
     if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rimuovere utenti!');
     
     const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da rimuovere!\n\n💡 Esempio: `.kick @utente`');
+    if (mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ *Menziona un utente!*\n\n' +
+            '💡 *Uso:* `.kick @utente [motivo]`\n' +
+            '📝 *Esempio:* `.kick @mario Spam`'
+        );
+    }
     
     try {
-        const toKickNumber = mentioned[0].id._serialized.split('@')[0];
-        const toKickName = mentioned[0].pushname || toKickNumber;
+        const toKick = mentioned[0];
+        const toKickId = toKick.id._serialized;
+        const toKickNumber = toKickId.split('@')[0];
+        const toKickName = await getUserDisplayName(toKickId, chat);
+        const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
         
+        // Verifica se è admin
         const freshChat = await client.getChatById(chat.id._serialized);
-        const participant = freshChat.participants.find(
-            p => p.id._serialized.split('@')[0] === toKickNumber
-        );
+        const participant = freshChat.participants.find(p => p.id._serialized === toKickId);
         
         if (!participant) {
             return msg.reply('❌ Utente non trovato nel gruppo!');
         }
         
-        await chat.removeParticipants([participant.id._serialized]);
+        if (participant.isAdmin || participant.isSuperAdmin) {
+            return msg.reply('⚠️ Non posso rimuovere un admin! Degradalo prima con `.d @utente`');
+        }
+        
+        // Rimuovi
+        await chat.removeParticipants([toKickId]);
+        
+        // Aggiungi a bannati (opzionale)
+        initGroup(chat.id._serialized);
+        if (!groupData[chat.id._serialized].bannedUsers.includes(toKickId)) {
+            groupData[chat.id._serialized].bannedUsers.push(toKickId);
+            saveData();
+        }
         
         await msg.reply(
             `╔═══════════════════════╗
 ║  👢 *UTENTE RIMOSSO*  ║
 ╚═══════════════════════╝
 
-👤 Utente: *${toKickName}*
-📱 Numero: ${toKickNumber}
+👤 *Utente:* ${toKickName}
+📱 *Numero:* ${toKickNumber}
+📝 *Motivo:* ${reason}
+👮 *Admin:* ${msg.author.split('@')[0]}
 
 ━━━━━━━━━━━━━━━━━━━━━
-L'utente è stato espulso dal gruppo.`
+✅ L'utente è stato espulso dal gruppo.
+🚫 È stato aggiunto alla lista bannati.`
         );
+        
+        console.log(`[KICK] ${toKickName} rimosso da ${msg.author}`);
         
     } catch (err) {
         console.error('Errore kick:', err);
-        await msg.reply('❌ Errore durante la rimozione. Verifica che il bot sia admin.');
+        await msg.reply('❌ Errore durante la rimozione. Verifica che:\n• Il bot sia admin\n• L\'utente non sia admin\n• L\'utente sia nel gruppo');
     }
 }
 
-// MUTA UTENTE (con sistema migliorato)
+// ========== MUTA ==========
 else if (command === 'muta' || command === 'mute') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per eliminare messaggi!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
     
     const mentioned = await msg.getMentions();
     if (mentioned.length === 0) {
         return msg.reply(
-            '⚠️ Menziona un utente da mutare!\n\n' +
-            '💡 *Esempi:*\n' +
+            '⚠️ *Menziona un utente!*\n\n' +
+            '💡 *Uso:*\n' +
             '• `.muta @utente` - Mute permanente\n' +
-            '• `.muta @utente 30` - Mute per 30 minuti'
+            '• `.muta @utente 30` - Mute 30 minuti\n' +
+            '• `.muta @utente 2h` - Mute 2 ore\n' +
+            '• `.muta @utente 1d` - Mute 1 giorno'
         );
     }
     
     try {
-        const toMuteId = mentioned[0].id._serialized;
-        const toMuteNumber = toMuteId.split('@')[0];
-        const toMuteName = mentioned[0].pushname || toMuteNumber;
-        const muteTime = parseInt(args[args.length - 1]);
+        const toMute = mentioned[0];
+        const toMuteId = toMute.id._serialized;
+        const toMuteName = await getUserDisplayName(toMuteId, chat);
         
-        initGroup(chat.id._serialized);
+        // Parse tempo (supporta minuti, ore, giorni)
+        let muteMinutes = 0;
+        const timeArg = args[args.length - 1];
         
-        // Verifica se già mutato
-        const alreadyMuted = groupData[chat.id._serialized].mutedUsers.some(
-            id => id === toMuteId || id.split('@')[0] === toMuteNumber
-        );
-        
-        if (alreadyMuted) {
-            return msg.reply(`⚠️ *${toMuteName}* è già mutato!`);
+        if (timeArg) {
+            if (timeArg.endsWith('d')) {
+                muteMinutes = parseInt(timeArg) * 24 * 60;
+            } else if (timeArg.endsWith('h')) {
+                muteMinutes = parseInt(timeArg) * 60;
+            } else if (!isNaN(parseInt(timeArg))) {
+                muteMinutes = parseInt(timeArg);
+            }
         }
         
-        // Aggiungi alla lista mutati
-        groupData[chat.id._serialized].mutedUsers.push(toMuteId);
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
         
-        // Gestione mute temporaneo
-        if (!isNaN(muteTime) && muteTime > 0) {
-            const unmuteTime = Date.now() + (muteTime * 60 * 1000);
+        // Verifica se già mutato
+        if (g.mutedUsers.includes(toMuteId)) {
+            return msg.reply(`⚠️ *${toMuteName}* è già mutato! Usa \`.smuta @utente\` per rimuovere il mute.`);
+        }
+        
+        // Aggiungi a mutati
+        g.mutedUsers.push(toMuteId);
+        
+        let responseText = '';
+        
+        if (muteMinutes > 0) {
+            const unmuteTime = Date.now() + (muteMinutes * 60 * 1000);
+            if (!g.muteTime) g.muteTime = {};
+            g.muteTime[toMuteId] = unmuteTime;
             
-            if (!groupData[chat.id._serialized].muteTime) {
-                groupData[chat.id._serialized].muteTime = {};
-            }
-            groupData[chat.id._serialized].muteTime[toMuteId] = unmuteTime;
-            
-            // Timeout per unmute automatico
+            // Auto-unmute
             setTimeout(async () => {
                 try {
-                    const idx = groupData[chat.id._serialized].mutedUsers.findIndex(
-                        id => id === toMuteId || id.split('@')[0] === toMuteNumber
-                    );
+                    const idx = g.mutedUsers.indexOf(toMuteId);
                     if (idx !== -1) {
-                        groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
-                        delete groupData[chat.id._serialized].muteTime[toMuteId];
+                        g.mutedUsers.splice(idx, 1);
+                        delete g.muteTime[toMuteId];
                         saveData();
-                        
-                        await client.sendMessage(
-                            chat.id._serialized,
-                            `🔊 *${toMuteName}* è stato automaticamente smutato!`
-                        );
+                        await client.sendMessage(chat.id._serialized, `🔊 *${toMuteName}* è stato automaticamente smutato!`);
                     }
                 } catch (err) {
                     console.error('Errore unmute automatico:', err);
                 }
-            }, muteTime * 60 * 1000);
+            }, muteMinutes * 60 * 1000);
             
-            saveData();
-            
-            await msg.reply(
-                `╔═══════════════════════╗
+            responseText = `
+╔═══════════════════════╗
 ║  🔇 *UTENTE MUTATO*   ║
 ╚═══════════════════════╝
 
-👤 Utente: *${toMuteName}*
-📱 Numero: ${toMuteNumber}
-⏱️ Durata: *${muteTime} minuti*
+👤 *Utente:* ${toMuteName}
+⏱️ *Durata:* ${muteMinutes >= 1440 ? Math.floor(muteMinutes/1440) + ' giorni' : muteMinutes >= 60 ? Math.floor(muteMinutes/60) + ' ore' : muteMinutes + ' minuti'}
+🔊 *Scadenza:* ${new Date(unmuteTime).toLocaleString('it-IT')}
 
 ━━━━━━━━━━━━━━━━━━━━━
-⚠️ Tutti i suoi messaggi saranno eliminati automaticamente.
-🔊 Sarà smutato automaticamente tra ${muteTime} minuti.`
-            );
-            
+⚠️ Tutti i suoi messaggi verranno eliminati automaticamente.
+🔊 Sarà smutato automaticamente alla scadenza.`;
         } else {
-            saveData();
-            
-            await msg.reply(
-                `╔═══════════════════════╗
+            responseText = `
+╔═══════════════════════╗
 ║  🔇 *UTENTE MUTATO*   ║
 ╚═══════════════════════╝
 
-👤 Utente: *${toMuteName}*
-📱 Numero: ${toMuteNumber}
-⏱️ Durata: *PERMANENTE*
+👤 *Utente:* ${toMuteName}
+⏱️ *Durata:* PERMANENTE ∞
 
 ━━━━━━━━━━━━━━━━━━━━━
-⚠️ Tutti i suoi messaggi saranno eliminati automaticamente.
-💡 Usa \`.smuta @utente\` per rimuovere il mute.`
-            );
+⚠️ Tutti i suoi messaggi verranno eliminati automaticamente.
+💡 Usa \`.smuta @utente\` per rimuovere il mute.`;
         }
+        
+        saveData();
+        await msg.reply(responseText);
+        
+        console.log(`[MUTE] ${toMuteName} mutato per ${muteMinutes} minuti da ${msg.author}`);
         
     } catch (err) {
         console.error('Errore muta:', err);
-        await msg.reply('❌ Errore durante il mute. Verifica che il bot sia admin.');
+        await msg.reply('❌ Errore durante il mute.');
     }
 }
 
-else if (command === 'modoadmin' || command === 'adminmode') {
+// ========== SMUTA ==========
+else if (command === 'smuta' || command === 'unmute') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente! Uso: `.smuta @utente`');
+    
+    try {
+        const toUnmuteId = mentioned[0].id._serialized;
+        const toUnmuteName = await getUserDisplayName(toUnmuteId, chat);
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        const idx = g.mutedUsers.indexOf(toUnmuteId);
+        
+        if (idx === -1) {
+            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`);
+        }
+        
+        g.mutedUsers.splice(idx, 1);
+        if (g.muteTime?.[toUnmuteId]) {
+            delete g.muteTime[toUnmuteId];
+        }
+        
+        saveData();
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  🔊 *UTENTE SMUTATO*  ║
+╚═══════════════════════╝
+
+👤 *Utente:* ${toUnmuteName}
+✅ *Status:* Può scrivere liberamente
+
+━━━━━━━━━━━━━━━━━━━━━
+Il mute è stato rimosso con successo!`
+        );
+        
+        console.log(`[UNMUTE] ${toUnmuteName} smutato da ${msg.author}`);
+        
+    } catch (err) {
+        console.error('Errore smuta:', err);
+        await msg.reply('❌ Errore durante lo smute.');
+    }
+}
+
+// ========== WARN ==========
+else if (command === 'warn') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ *Menziona un utente!*\n\n' +
+            '💡 *Uso:* `.warn @utente [motivo]`\n' +
+            '📝 *Esempio:* `.warn @mario Linguaggio inappropriato`'
+        );
+    }
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = await getUserDisplayName(userId, chat);
+        const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        g.warnings[userId] = (g.warnings[userId] || 0) + 1;
+        
+        // Log warning con timestamp
+        if (!g.warningHistory) g.warningHistory = {};
+        if (!g.warningHistory[userId]) g.warningHistory[userId] = [];
+        g.warningHistory[userId].push({
+            reason,
+            admin: msg.author,
+            timestamp: Date.now()
+        });
+        
+        saveData();
+        
+        const warnCount = g.warnings[userId];
+        const maxWarns = g.maxWarns || 3;
+        const progressBar = createProgressBar(warnCount, maxWarns, 10);
+        
+        // Emoji status
+        let statusEmoji = '⚠️';
+        if (warnCount >= maxWarns) statusEmoji = '🔴';
+        else if (warnCount >= maxWarns * 0.7) statusEmoji = '🟠';
+        else if (warnCount >= maxWarns * 0.4) statusEmoji = '🟡';
+        else statusEmoji = '🟢';
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  ⚠️ *WARNING ISSUED*  ║
+╚═══════════════════════╝
+
+👤 *Utente:* ${userName}
+📊 *Warn:* ${warnCount}/${maxWarns}
+${progressBar}
+
+${statusEmoji} *Status:* ${warnCount >= maxWarns ? 'CRITICO' : warnCount >= maxWarns * 0.7 ? 'PERICOLO' : warnCount >= maxWarns * 0.4 ? 'ATTENZIONE' : 'NORMALE'}
+
+💬 *Motivo:*
+${reason}
+
+👮 *Admin:* ${msg.author.split('@')[0]}
+📅 *Data:* ${new Date().toLocaleString('it-IT')}
+
+━━━━━━━━━━━━━━━━━━━━━
+${warnCount >= maxWarns ? '🚨 *LIMITE RAGGIUNTO!* Utente verrà rimosso.' : `⚠️ Ancora *${maxWarns - warnCount} warn* prima della rimozione automatica.`}`
+        );
+        
+        // Auto-kick se limite raggiunto
+        if (warnCount >= maxWarns) {
+            setTimeout(async () => {
+                try {
+                    await chat.removeParticipants([userId]);
+                    await msg.reply(`🚫 *${userName}* è stato rimosso automaticamente per aver raggiunto ${maxWarns} warning!`);
+                    delete g.warnings[userId];
+                    saveData();
+                } catch (err) {
+                    console.error('Errore auto-kick:', err);
+                    await msg.reply('❌ Impossibile rimuovere l\'utente. Verifica i permessi del bot.');
+                }
+            }, 2000);
+        }
+        
+        console.log(`[WARN] ${userName} warned by ${msg.author}: ${reason}`);
+        
+    } catch (err) {
+        console.error('Errore warn:', err);
+        await msg.reply('❌ Errore durante l\'invio del warning.');
+    }
+}
+
+// ========== UNWARN ==========
+else if (command === 'unwarn') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente! Uso: `.unwarn @utente`');
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = await getUserDisplayName(userId, chat);
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        if (!g.warnings[userId] || g.warnings[userId] === 0) {
+            return msg.reply(`⚠️ *${userName}* non ha warning attivi!`);
+        }
+        
+        const previousWarns = g.warnings[userId];
+        g.warnings[userId]--;
+        saveData();
+        
+        const warnCount = g.warnings[userId];
+        const maxWarns = g.maxWarns || 3;
+        const progressBar = createProgressBar(warnCount, maxWarns, 10);
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  ✅ *WARNING RIMOSSO* ║
+╚═══════════════════════╝
+
+👤 *Utente:* ${userName}
+📊 *Warn precedenti:* ${previousWarns}
+📊 *Warn attuali:* ${warnCount}/${maxWarns}
+${progressBar}
+
+━━━━━━━━━━━━━━━━━━━━━
+Un warning è stato rimosso con successo!`
+        );
+        
+    } catch (err) {
+        console.error('Errore unwarn:', err);
+        await msg.reply('❌ Errore durante la rimozione del warning.');
+    }
+}
+
+// ========== WARNINGS ==========
+else if (command === 'warnings') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    const userId = getUserIdFromMsg(msg);
+    const mentioned = await msg.getMentions();
+    const targetId = mentioned.length > 0 ? mentioned[0].id._serialized : userId;
+    const targetName = mentioned.length > 0 
+        ? await getUserDisplayName(targetId, chat)
+        : 'Tu';
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    
+    const warnCount = g.warnings[targetId] || 0;
+    const maxWarns = g.maxWarns || 3;
+    const progressBar = createProgressBar(warnCount, maxWarns, 15);
+    
+    // Status con emoji
+    let status = '';
+    let statusEmoji = '';
+    if (warnCount === 0) {
+        status = '✅ Nessun warning';
+        statusEmoji = '🟢';
+    } else if (warnCount < maxWarns * 0.4) {
+        status = '⚠️ Attenzione';
+        statusEmoji = '🟡';
+    } else if (warnCount < maxWarns * 0.7) {
+        status = '🚨 Pericolo';
+        statusEmoji = '🟠';
+    } else if (warnCount < maxWarns) {
+        status = '🔴 Critico';
+        statusEmoji = '🔴';
+    } else {
+        status = '💀 Limite raggiunto';
+        statusEmoji = '💀';
+    }
+    
+    // Storia warnings (ultimi 3)
+    let historyText = '';
+    if (g.warningHistory && g.warningHistory[targetId] && g.warningHistory[targetId].length > 0) {
+        const history = g.warningHistory[targetId].slice(-3).reverse();
+        historyText = '\n\n📜 *ULTIMI WARNING:*\n';
+        history.forEach((w, i) => {
+            const date = new Date(w.timestamp).toLocaleDateString('it-IT');
+            historyText += `${i + 1}. ${w.reason}\n   👮 ${w.admin.split('@')[0]} • ${date}\n`;
+        });
+    }
+    
+    await msg.reply(
+        `╔═══════════════════════╗
+║  📋 *WARNINGS*        ║
+╚═══════════════════════╝
+
+👤 *Utente:* ${targetName}
+📊 *Warn:* ${warnCount}/${maxWarns}
+${progressBar}
+
+${statusEmoji} *Status:* ${status}
+${warnCount >= maxWarns ? '⛔ *AZIONE:* Prossimo warn = kick automatico' : `💡 *Rimanenti:* ${maxWarns - warnCount} warn disponibili`}${historyText}
+
+━━━━━━━━━━━━━━━━━━━━━
+${warnCount > 0 ? '💡 Admin possono usare `.unwarn @utente` per rimuovere un warn' : '✨ Record pulito! Nessuna infrazione registrata.'}`
+    );
+}
+
+// ========== CLEAR WARNINGS ==========
+else if (command === 'clearwarns') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    
+    const mentioned = await msg.getMentions();
+    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente! Uso: `.clearwarns @utente`');
+    
+    try {
+        const userId = mentioned[0].id._serialized;
+        const userName = await getUserDisplayName(userId, chat);
+        
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized];
+        
+        const previousWarns = g.warnings[userId] || 0;
+        g.warnings[userId] = 0;
+        
+        // Cancella anche la storia
+        if (g.warningHistory && g.warningHistory[userId]) {
+            delete g.warningHistory[userId];
+        }
+        
+        saveData();
+        
+        await msg.reply(
+            `╔═══════════════════════╗
+║  🗑️ *WARNS CANCELLATI*║
+╚═══════════════════════╝
+
+👤 *Utente:* ${userName}
+📊 *Warn precedenti:* ${previousWarns}
+✨ *Warn attuali:* 0
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ Tutti i warning e la cronologia sono stati cancellati!
+🎉 L'utente ha un record pulito.`
+        );
+        
+        console.log(`[CLEARWARNS] ${userName} warns cleared by ${msg.author}`);
+        
+    } catch (err) {
+        console.error('Errore clearwarns:', err);
+        await msg.reply('❌ Errore durante la cancellazione dei warning.');
+    }
+}
+
+// ========== ANTILINK ==========
+else if (command === 'antilink') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const status = args[0]?.toLowerCase();
+    
+    if (!['on', 'off'].includes(status)) {
+        initGroup(chat.id._serialized);
+        const currentStatus = groupData[chat.id._serialized].antilink ? '✅ ON' : '❌ OFF';
+        return msg.reply(
+            `⚙️ 🔗 *ANTILINK*\n\n` +
+            `*Status attuale:* ${currentStatus}\n\n` +
+            `*Descrizione:*\n` +
+            `Blocca automaticamente messaggi contenenti link esterni.\n\n` +
+            `*Uso:* \`.antilink on/off\``
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].antilink = (status === 'on');
+    saveData();
+    
+    await msg.reply(`✅ 🔗 Antilink ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!\n\n${status === 'on' ? '⚠️ I link esterni verranno rimossi automaticamente.' : '📋 I link sono ora consentiti.'}`);
+}
+
+// ========== ANTIBOT ==========
+else if (command === 'antibot') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const status = args[0]?.toLowerCase();
+    
+    if (!['on', 'off'].includes(status)) {
+        initGroup(chat.id._serialized);
+        const currentStatus = groupData[chat.id._serialized].antiBot ? '✅ ON' : '❌ OFF';
+        return msg.reply(
+            `⚙️ 🤖 *ANTIBOT*\n\n` +
+            `*Status attuale:* ${currentStatus}\n\n` +
+            `*Descrizione:*\n` +
+            `Previene l'aggiunta di altri bot al gruppo.\n\n` +
+            `*Uso:* \`.antibot on/off\``
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].antiBot = (status === 'on');
+    saveData();
+    
+    await msg.reply(`✅ 🤖 Antibot ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!\n\n${status === 'on' ? '⚠️ I bot non autorizzati verranno rimossi.' : '📋 È ora possibile aggiungere altri bot.'}`);
+}
+
+// ========== ANTISPAM ==========
+else if (command === 'antispam') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const status = args[0]?.toLowerCase();
+    if (!['on', 'off'].includes(status)) return msg.reply('⚠️ Usa: `.antispam on/off`');
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].antiSpam = (status === 'on');
+    saveData();
+    
+    await msg.reply(`✅ 💥 Anti-spam ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!\n\n${status === 'on' ? '⚠️ Messaggi spam verranno bloccati.' : '📋 Controllo spam disattivato.'}`);
+}
+
+// ========== ANTIFLOOD ==========
+else if (command === 'antiflood') {
     if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
     
     const status = args[0]?.toLowerCase();
     if (!['on', 'off'].includes(status)) {
-        initGroup(chat.id._serialized);
-        const currentStatus = groupData[chat.id._serialized].adminMode ? '✅ ON' : '❌ OFF';
-        return msg.reply(`⚙️ 👑 *MODO ADMIN*\n\nStato: ${currentStatus}\n\nQuando attivo, solo gli admin possono usare i comandi.\n\nUsa: .modoadmin on/off`);
+        return msg.reply(
+            '⚠️ *Uso:* `.antiflood on/off [maxMsg] [secondi]`\n\n' +
+            '💡 *Esempio:*\n' +
+            '`.antiflood on 5 10`\n' +
+            '(Max 5 messaggi in 10 secondi)'
+        );
     }
     
     initGroup(chat.id._serialized);
-    groupData[chat.id._serialized].adminMode = (status === 'on');
+    if (!automodConfig[chat.id._serialized]) automodConfig[chat.id._serialized] = {};
+    
+    automodConfig[chat.id._serialized].antiFlood = (status === 'on');
+    
+    if (status === 'on') {
+        const maxMsg = parseInt(args[1]) || 5;
+        const timeWindow = parseInt(args[2]) || 10;
+        automodConfig[chat.id._serialized].maxMessages = maxMsg;
+        automodConfig[chat.id._serialized].timeWindow = timeWindow;
+        
+        await msg.reply(
+            `✅ 💥 Antiflood *ATTIVATO*!\n\n` +
+            `📊 *Configurazione:*\n` +
+            `• Max messaggi: *${maxMsg}*\n` +
+            `• Finestra temporale: *${timeWindow}s*\n\n` +
+            `⚠️ Utenti che superano il limite riceveranno un warn.`
+        );
+    } else {
+        await msg.reply('✅ 💥 Antiflood *DISATTIVATO*!');
+    }
+    
     saveData();
-    await msg.reply(`✅ 👑 Modo Admin ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!`);
 }
 
+// ========== SLOWMODE ==========
+else if (command === 'slowmode') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const seconds = parseInt(args[0]);
+    
+    if (isNaN(seconds) || seconds < 0) {
+        return msg.reply(
+            '⚠️ *Uso:* `.slowmode [secondi]`\n\n' +
+            '💡 *Esempi:*\n' +
+            '• `.slowmode 5` - 1 msg ogni 5 secondi\n' +
+            '• `.slowmode 0` - Disattiva slowmode'
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].slowmode = seconds;
+    saveData();
+    
+    if (seconds === 0) {
+        await msg.reply('✅ ⏱️ Slowmode *DISATTIVATO*!');
+    } else {
+        await msg.reply(
+            `✅ ⏱️ Slowmode *ATTIVATO*!\n\n` +
+            `⏱️ *Intervallo:* ${seconds} secondi\n` +
+            `📋 Gli utenti possono inviare 1 messaggio ogni ${seconds} secondi.`
+        );
+    }
+}
+
+// ========== BLOCCA PAROLA ==========
+else if (command === 'blocca' || command === 'blockword') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const word = args.join(' ').toLowerCase().trim();
+    if (!word) return msg.reply('⚠️ Specifica una parola! Uso: `.blocca [parola]`');
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    
+    if (g.blockedWords.includes(word)) {
+        return msg.reply(`⚠️ La parola *"${word}"* è già bloccata!`);
+    }
+    
+    g.blockedWords.push(word);
+    saveData();
+    
+    await msg.reply(
+        `✅ 🚫 *PAROLA BLOCCATA*\n\n` +
+        `📝 Parola: *"${word}"*\n` +
+        `📊 Totale bloccate: *${g.blockedWords.length}*\n\n` +
+        `⚠️ Messaggi contenenti questa parola verranno eliminati.`
+    );
+}
+
+// ========== SBLOCCA PAROLA ==========
+else if (command === 'sblocca' || command === 'unblockword') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const word = args.join(' ').toLowerCase().trim();
+    if (!word) return msg.reply('⚠️ Specifica una parola! Uso: `.sblocca [parola]`');
+    
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized];
+    const idx = g.blockedWords.indexOf(word);
+    
+    if (idx === -1) {
+        return msg.reply(`⚠️ La parola *"${word}"* non è bloccata!`);
+    }
+    
+    g.blockedWords.splice(idx, 1);
+    saveData();
+    
+    await msg.reply(
+        `✅ *PAROLA SBLOCCATA*\n\n` +
+        `📝 Parola: *"${word}"*\n` +
+        `📊 Totale bloccate: *${g.blockedWords.length}*`
+    );
+}
+
+// ========== LISTA PAROLE ==========
+else if (command === 'listaparole') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    
+    initGroup(chat.id._serialized);
+    const words = groupData[chat.id._serialized].blockedWords;
+    
+    if (words.length === 0) {
+        return msg.reply('📋 *PAROLE BLOCCATE*\n\nNessuna parola bloccata al momento.');
+    }
+    
+    let text = `╔═══════════════════════╗
+║  🚫 *PAROLE BLOCCATE* ║
+╚═══════════════════════╝
+
+📊 *Totale:* ${words.length}\n\n`;
+    
+    words.forEach((w, i) => {
+        text += `${i + 1}. ${w}\n`;
+    });
+    
+    text += `\n━━━━━━━━━━━━━━━━━━━━━\n💡 Usa \`.sblocca [parola]\` per rimuovere una parola.`;
+    
+    await msg.reply(text);
+}
+
+// ========== REGOLE ==========
+else if (command === 'regole' || command === 'setrules') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const rules = args.join(' ').trim();
+    if (!rules) {
+        return msg.reply(
+            '⚠️ *Specifica le regole!*\n\n' +
+            '💡 *Uso:* `.regole [testo regole]`\n\n' +
+            '📝 *Esempio:*\n' +
+            '`.regole 1. Rispetta tutti\n2. No spam\n3. No insulti`'
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].rules = rules;
+    saveData();
+    
+    await msg.reply('✅ 📜 *Regole impostate con successo!*\n\nGli utenti possono vederle con `.vediregole`');
+}
+
+// ========== VEDI REGOLE ==========
+else if (command === 'vediregole' || command === 'rules') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    
+    initGroup(chat.id._serialized);
+    const rules = groupData[chat.id._serialized].rules;
+    
+    if (!rules) {
+        return msg.reply('⚠️ *Nessuna regola impostata!*\n\nGli admin possono impostarle con `.regole`');
+    }
+    
+    await msg.reply(
+        `╔═══════════════════════╗
+║  📜 *REGOLE GRUPPO*   ║
+╚═══════════════════════╝
+
+${rules}
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ Il rispetto delle regole è obbligatorio!`
+    );
+}
+
+// ========== CHIUDI GRUPPO ==========
+else if (command === 'chiudi' || command === 'close') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        await chat.setMessagesAdminsOnly(true);
+        await msg.reply(
+            `🔒 *GRUPPO CHIUSO*\n\n` +
+            `📋 Solo gli admin possono scrivere.\n` +
+            `💡 Usa \`.apri\` per riaprire il gruppo.`
+        );
+    } catch (err) {
+        console.error('Errore chiudi gruppo:', err);
+        await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
+    }
+}
+
+// ========== APRI GRUPPO ==========
+else if (command === 'apri' || command === 'open') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        await chat.setMessagesAdminsOnly(false);
+        await msg.reply(
+            `🔓 *GRUPPO APERTO*\n\n` +
+            `📋 Tutti possono scrivere.\n` +
+            `💡 Usa \`.chiudi\` per limitare ai soli admin.`
+        );
+    } catch (err) {
+        console.error('Errore apri gruppo:', err);
+        await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
+    }
+}
+
+// ========== LOCK IMPOSTAZIONI ==========
+else if (command === 'lock') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        await chat.setInfoAdminsOnly(true);
+        await msg.reply(
+            `🔒 *IMPOSTAZIONI BLOCCATE*\n\n` +
+            `📋 Solo admin possono modificare:\n` +
+            `• Nome gruppo\n` +
+            `• Descrizione\n` +
+            `• Foto profilo\n\n` +
+            `💡 Usa \`.unlock\` per sbloccare.`
+        );
+    } catch (err) {
+        console.error('Errore lock:', err);
+        await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
+    }
+}
+
+// ========== UNLOCK IMPOSTAZIONI ==========
+else if (command === 'unlock') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        await chat.setInfoAdminsOnly(false);
+        await msg.reply(
+            `🔓 *IMPOSTAZIONI SBLOCCATE*\n\n` +
+            `📋 Tutti possono modificare le info del gruppo.\n` +
+            `💡 Usa \`.lock\` per limitare agli admin.`
+        );
+    } catch (err) {
+        console.error('Errore unlock:', err);
+        await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
+    }
+}
+
+// ========== DELETE MESSAGE ==========
+else if (command === 'r' || command === 'delete') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        const quoted = await msg.getQuotedMessage();
+        if (!quoted) {
+            return msg.reply('⚠️ Rispondi al messaggio da eliminare!\n\n💡 Quota il messaggio e poi usa `.r`');
+        }
+        
+        await quoted.delete(true);
+        await msg.reply('✅ 🗑️ Messaggio eliminato!');
+        
+        // Elimina anche il comando dopo 2 secondi
+        setTimeout(async () => {
+            try {
+                await msg.delete(true);
+            } catch (e) {
+                // Ignora errori
+            }
+        }, 2000);
+        
+    } catch (err) {
+        console.error('Errore delete:', err);
+        await msg.reply('❌ Impossibile eliminare. Il messaggio potrebbe essere troppo vecchio o non ho i permessi.');
+    }
+}
+
+// ========== PROMUOVI ==========
+else if (command === 'p' || command === 'promuovi' || command === 'promote') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
+    
+    const mentioned = await msg.getMentions();
+    if (!mentioned || mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ *Menziona almeno un utente!*\n\n' +
+            '💡 *Uso:* `.p @utente1 @utente2 ...`\n' +
+            '📝 *Esempio:* `.p @mario @luigi`'
+        );
+    }
+    
+    const promoted = [];
+    const failed = [];
+    const botId = client.info?.wid?._serialized;
+    
+    for (const u of mentioned) {
+        const uid = u.id._serialized;
+        const display = await getUserDisplayName(uid, chat);
+        
+        if (botId && uid === botId) {
+            failed.push({ display, reason: 'Bot già admin' });
+            continue;
+        }
+        
+        try {
+            await chat.promoteParticipants([uid]);
+            promoted.push(display);
+        } catch (err) {
+            console.error(`Errore promozione ${display}:`, err);
+            failed.push({ display, reason: err.message || 'Errore sconosciuto' });
+        }
+    }
+    
+    let reply = `╔═══════════════════════╗
+║  👑 *PROMOZIONI*      ║
+╚═══════════════════════╝\n\n`;
+    
+    if (promoted.length > 0) {
+        reply += `✅ *Promossi:* ${promoted.length}\n`;
+        promoted.forEach(n => reply += `• ${n}\n`);
+        reply += '\n';
+    }
+    
+    if (failed.length > 0) {
+        reply += `⚠️ *Non promossi:* ${failed.length}\n`;
+        failed.forEach(f => reply += `• ${f.display} — ${f.reason}\n`);
+    }
+    
+    await msg.reply(reply);
+}
+
+// ========== DEGRADA ==========
+else if (command === 'd' || command === 'degrada' || command === 'demote') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
+    
+    const mentioned = await msg.getMentions();
+    if (!mentioned || mentioned.length === 0) {
+        return msg.reply(
+            '⚠️ *Menziona almeno un utente!*\n\n' +
+            '💡 *Uso:* `.d @utente1 @utente2 ...`\n' +
+            '📝 *Esempio:* `.d @mario @luigi`'
+        );
+    }
+    
+    const demoted = [];
+    const failed = [];
+    const botId = client.info?.wid?._serialized;
+    
+    for (const u of mentioned) {
+        const uid = u.id._serialized;
+        const display = await getUserDisplayName(uid, chat);
+        
+        if (botId && uid === botId) {
+            failed.push({ display, reason: 'Non posso degradare me stesso' });
+            continue;
+        }
+        
+        try {
+            await chat.demoteParticipants([uid]);
+            demoted.push(display);
+        } catch (err) {
+            console.error(`Errore degradazione ${display}:`, err);
+            failed.push({ display, reason: err.message || 'Errore sconosciuto' });
+        }
+    }
+    
+    let reply = `╔═══════════════════════╗
+║  👤 *DEGRADAZIONI*    ║
+╚═══════════════════════╝\n\n`;
+    
+    if (demoted.length > 0) {
+        reply += `✅ *Degradati:* ${demoted.length}\n`;
+        demoted.forEach(n => reply += `• ${n}\n`);
+        reply += '\n';
+    }
+    
+    if (failed.length > 0) {
+        reply += `⚠️ *Non degradati:* ${failed.length}\n`;
+        failed.forEach(f => reply += `• ${f.display} — ${f.reason}\n`);
+    }
+    
+    await msg.reply(reply);
+}
+
+// ========== LISTA ADMIN ==========
+else if (command === 'admins') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    
+    const admins = chat.participants.filter(p => p.isAdmin || p.isSuperAdmin);
+    
+    let text = `╔═══════════════════════╗
+║  👑 *LISTA ADMIN*     ║
+╚═══════════════════════╝
+
+📊 *Totale:* ${admins.length}\n\n`;
+    
+    for (let i = 0; i < admins.length; i++) {
+        const admin = admins[i];
+        const name = await getUserDisplayName(admin.id._serialized, chat);
+        const role = admin.isSuperAdmin ? '👑' : '👮';
+        text += `${role} ${i + 1}. ${name}\n`;
+    }
+    
+    await msg.reply(text);
+}
+
+// ========== LISTA MUTATI ==========
+else if (command === 'mutati') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    initGroup(chat.id._serialized);
+    const muted = groupData[chat.id._serialized].mutedUsers;
+    
+    if (muted.length === 0) {
+        return msg.reply('📋 *UTENTI MUTATI*\n\nNessun utente mutato al momento.');
+    }
+    
+    let text = `╔═══════════════════════╗
+║  🔇 *UTENTI MUTATI*   ║
+╚═══════════════════════╝
+
+📊 *Totale:* ${muted.length}\n\n`;
+    
+    for (let i = 0; i < muted.length; i++) {
+        const name = await getUserDisplayName(muted[i], chat);
+        const muteTime = groupData[chat.id._serialized].muteTime?.[muted[i]];
+        
+        if (muteTime) {
+            const remaining = Math.max(0, Math.floor((muteTime - Date.now()) / 60000));
+            text += `${i + 1}. ${name}\n   ⏱️ Scade tra: ${remaining} minuti\n`;
+        } else {
+            text += `${i + 1}. ${name}\n   ⏱️ Permanente\n`;
+        }
+    }
+    
+    await msg.reply(text);
+}
+
+// ========== LISTA BANNATI ==========
+else if (command === 'bannati') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    initGroup(chat.id._serialized);
+    const banned = groupData[chat.id._serialized].bannedUsers;
+    
+    if (banned.length === 0) { return msg.reply('📋 *UTENTI BANNATI*\n\nNessun utente bannato al momento.');
+    }
+    
+    let text = `╔═══════════════════════╗
+║  🚫 *UTENTI BANNATI*  ║
+╚═══════════════════════╝
+
+📊 *Totale:* ${banned.length}\n\n`;
+    
+    for (let i = 0; i < banned.length; i++) {
+        const name = await getUserDisplayName(banned[i], chat);
+        text += `${i + 1}. ${name}\n`;
+    }
+    
+    text += `\n━━━━━━━━━━━━━━━━━━━━━\n💡 Usa \`.unban @utente\` per rimuovere un ban.`;
+    
+    await msg.reply(text);
+}
+
+// ========== ATTIVITÀ ==========
 else if (command === 'attivita' || command === 'activity') {
     if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
     
@@ -1078,591 +1971,288 @@ else if (command === 'attivita' || command === 'activity') {
         .reduce((sum, u) => sum + u.messages, 0);
     
     const activeUsers = Object.keys(userStats).filter(id => userStats[id].messages > 0).length;
-    
-    await msg.reply(
-        `📈 *ATTIVITÀ GRUPPO*\n\n` +
-        `👥 Utenti attivi: *${activeUsers}*\n` +
-        `💬 Messaggi totali: *${totalMessages}*\n` +
-        `⚠️ Utenti mutati: *${g.mutedUsers.length}*\n` +
-        `🚫 Utenti bannati: *${g.bannedUsers.length}*\n` +
-        `🛡️ Antilink: ${g.antilink ? '✅' : '❌'}\n` +
-        `🤖 Antibot: ${g.antiBot ? '✅' : '❌'}\n` +
-        `⏱️ Slowmode: ${g.slowmode}s`
-    );
-}
-
-// SMUTA UTENTE
-else if (command === 'smuta' || command === 'unmute') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente da smutare!\n\n💡 Esempio: `.smuta @utente`');
-    
-    try {
-        const toUnmuteId = mentioned[0].id._serialized;
-        const toUnmuteNumber = toUnmuteId.split('@')[0];
-        const toUnmuteName = mentioned[0].pushname || toUnmuteNumber;
-        
-        initGroup(chat.id._serialized);
-        const idx = groupData[chat.id._serialized].mutedUsers.findIndex(
-            id => id === toUnmuteId || id.split('@')[0] === toUnmuteNumber
-        );
-        
-        if (idx === -1) {
-            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`);
-        }
-        
-        groupData[chat.id._serialized].mutedUsers.splice(idx, 1);
-        
-        // Rimuovi anche il tempo se presente
-        if (groupData[chat.id._serialized].muteTime?.[toUnmuteId]) {
-            delete groupData[chat.id._serialized].muteTime[toUnmuteId];
-        }
-        
-        saveData();
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  🔊 *UTENTE SMUTATO*  ║
-╚═══════════════════════╝
-
-👤 Utente: *${toUnmuteName}*
-📱 Numero: ${toUnmuteNumber}
-
-━━━━━━━━━━━━━━━━━━━━━
-✅ L'utente può ora scrivere liberamente.`
-        );
-        
-    } catch (err) {
-        console.error('Errore smuta:', err);
-        await msg.reply('❌ Errore durante lo smute.');
-    }
-}
-
-// WARN UTENTE
-else if (command === 'warn') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) {
-        return msg.reply(
-            '⚠️ Menziona un utente da avvisare!\n\n' +
-            '💡 *Esempio:*\n' +
-            '`.warn @utente Spam nel gruppo`'
-        );
-    }
-    
-    try {
-        const userId = mentioned[0].id._serialized;
-        const userName = mentioned[0].pushname || userId.split('@')[0];
-        const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
-        
-        initGroup(chat.id._serialized);
-        const g = groupData[chat.id._serialized];
-        
-        g.warnings[userId] = (g.warnings[userId] || 0) + 1;
-        saveData();
-        
-        const warnCount = g.warnings[userId];
-        const maxWarns = g.maxWarns || 3;
-        
-        // Calcola barra di avanzamento warns
-        const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  ⚠️ *WARNING ISSUED*  ║
-╚═══════════════════════╝
-
-👤 Utente: *${userName}*
-📊 Warn: *${warnCount}/${maxWarns}*
-${progressBar}
-
-💬 *Motivo:*
-${reason}
-
-━━━━━━━━━━━━━━━━━━━━━
-${warnCount >= maxWarns ? '🚨 LIMITE RAGGIUNTO! Utente verrà rimosso.' : `⚠️ Ancora ${maxWarns - warnCount} warn prima della rimozione.`}`
-        );
-        
-        // Auto-kick se raggiunto il limite
-        if (warnCount >= maxWarns) {
-            try {
-                await chat.removeParticipants([userId]);
-                await msg.reply(`🚫 *${userName}* è stato rimosso per troppi warning!`);
-                delete g.warnings[userId];
-                saveData();
-            } catch (err) {
-                console.error('Errore auto-kick:', err);
-            }
-        }
-        
-    } catch (err) {
-        console.error('Errore warn:', err);
-        await msg.reply('❌ Errore durante l\'invio del warning.');
-    }
-}
-
-// UNWARN UTENTE
-else if (command === 'unwarn') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente!\n\n💡 Esempio: `.unwarn @utente`');
-    
-    try {
-        const userId = mentioned[0].id._serialized;
-        const userName = mentioned[0].pushname || userId.split('@')[0];
-        
-        initGroup(chat.id._serialized);
-        const g = groupData[chat.id._serialized];
-        
-        if (!g.warnings[userId] || g.warnings[userId] === 0) {
-            return msg.reply(`⚠️ *${userName}* non ha warning attivi!`);
-        }
-        
-        g.warnings[userId]--;
-        saveData();
-        
-        const warnCount = g.warnings[userId];
-        const maxWarns = g.maxWarns || 3;
-        const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  ✅ *WARNING RIMOSSO* ║
-╚═══════════════════════╝
-
-👤 Utente: *${userName}*
-📊 Warn: *${warnCount}/${maxWarns}*
-${progressBar}
-
-━━━━━━━━━━━━━━━━━━━━━
-Un warning è stato rimosso con successo.`
-        );
-        
-    } catch (err) {
-        console.error('Errore unwarn:', err);
-        await msg.reply('❌ Errore durante la rimozione del warning.');
-    }
-}
-
-// VISUALIZZA WARNINGS
-else if (command === 'warnings') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    const userId = getUserIdFromMsg(msg); // AGGIUNGI QUESTA RIGA
-    const mentioned = await msg.getMentions();
-    const targetId = mentioned.length > 0 ? mentioned[0].id._serialized : userId;
-    const targetName = mentioned.length > 0 
-        ? (mentioned[0].pushname || mentioned[0].number) 
-        : 'Tu';
-    
-    initGroup(chat.id._serialized);
-    const g = groupData[chat.id._serialized];
-    
-    const warnCount = g.warnings[targetId] || 0;
-    const maxWarns = g.maxWarns || 3;
-    const progressBar = '█'.repeat(warnCount) + '░'.repeat(maxWarns - warnCount);
-    
-    let status = '';
-    if (warnCount === 0) status = '✅ Nessun warning';
-    else if (warnCount < maxWarns / 2) status = '⚠️ Attenzione';
-    else if (warnCount < maxWarns) status = '🚨 Pericolo';
-    else status = '🔴 Critico';
+    const totalUsers = chat.participants.length;
+    const activityRate = totalUsers > 0 ? ((activeUsers / totalUsers) * 100).toFixed(1) : 0;
     
     await msg.reply(
         `╔═══════════════════════╗
-║  📋 *WARNINGS*        ║
+║  📈 *ATTIVITÀ GRUPPO* ║
 ╚═══════════════════════╝
 
-👤 Utente: *${targetName}*
-📊 Warn: *${warnCount}/${maxWarns}*
-${progressBar}
+👥 *UTENTI:*
+- Totali: *${totalUsers}*
+- Attivi: *${activeUsers}* (${activityRate}%)
+- Inattivi: *${totalUsers - activeUsers}*
 
-📌 Status: ${status}
+💬 *MESSAGGI:*
+- Totali: *${totalMessages}*
+- Media/utente: *${totalUsers > 0 ? Math.floor(totalMessages / totalUsers) : 0}*
+
+🛡️ *MODERAZIONE:*
+- Mutati: *${g.mutedUsers.length}* 🔇
+- Bannati: *${g.bannedUsers.length}* 🚫
+- Warnings attivi: *${Object.values(g.warnings).reduce((sum, w) => sum + w, 0)}* ⚠️
+
+⚙️ *PROTEZIONI:*
+- Antilink: ${g.antilink ? '✅' : '❌'}
+- Antibot: ${g.antiBot ? '✅' : '❌'}
+- Antispam: ${g.antiSpam ? '✅' : '❌'}
+- Slowmode: ${g.slowmode > 0 ? `✅ (${g.slowmode}s)` : '❌'}
 
 ━━━━━━━━━━━━━━━━━━━━━
-${warnCount >= maxWarns ? '⚠️ Limite raggiunto! Prossimo warn = kick' : `💡 Ancora ${maxWarns - warnCount} warn disponibili`}`
+📅 *Data:* ${new Date().toLocaleDateString('it-IT')}`
     );
 }
 
-// CLEAR WARNINGS
-else if (command === 'clearwarns') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+// ========== SETMAXWARNS ==========
+else if (command === 'setmaxwarns') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
     
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente!\n\n💡 Esempio: `.clearwarns @utente`');
+    const maxWarns = parseInt(args[0]);
+    
+    if (isNaN(maxWarns) || maxWarns < 1 || maxWarns > 10) {
+        return msg.reply(
+            '⚠️ *Specifica un numero valido!*\n\n' +
+            '💡 *Uso:* `.setmaxwarns [1-10]`\n' +
+            '📝 *Esempio:* `.setmaxwarns 3`\n\n' +
+            '⚠️ Numero consigliato: 3-5'
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    const previousMax = groupData[chat.id._serialized].maxWarns || 3;
+    groupData[chat.id._serialized].maxWarns = maxWarns;
+    saveData();
+    
+    await msg.reply(
+        `╔═══════════════════════╗
+║  ⚙️ *MAX WARNS*       ║
+╚═══════════════════════╝
+
+📊 *Valore precedente:* ${previousMax}
+✨ *Nuovo valore:* ${maxWarns}
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ Gli utenti verranno rimossi automaticamente dopo ${maxWarns} warning.`
+    );
+}
+
+// ========== MODO ADMIN ==========
+else if (command === 'modoadmin' || command === 'adminmode') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    const status = args[0]?.toLowerCase();
+    
+    if (!['on', 'off'].includes(status)) {
+        initGroup(chat.id._serialized);
+        const currentStatus = groupData[chat.id._serialized].adminMode ? '✅ ON' : '❌ OFF';
+        return msg.reply(
+            `⚙️ 👑 *MODO ADMIN*\n\n` +
+            `*Status attuale:* ${currentStatus}\n\n` +
+            `*Descrizione:*\n` +
+            `Quando attivo, solo gli admin possono usare i comandi del bot.\n\n` +
+            `*Uso:* \`.modoadmin on/off\``
+        );
+    }
+    
+    initGroup(chat.id._serialized);
+    groupData[chat.id._serialized].adminMode = (status === 'on');
+    saveData();
+    
+    await msg.reply(
+        `✅ 👑 Modo Admin ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!\n\n` +
+        `${status === 'on' ? '⚠️ Solo gli admin possono usare i comandi.' : '📋 Tutti possono usare i comandi base.'}`
+    );
+}
+
+// ========== MENU ECONOMIA ==========
+else if (command === 'economia' || command === 'eco') {
+    const ecoText = `
+╔═══════════════════════╗
+║ 💰 *ECONOMIA*        ║
+╚═══════════════════════╝
+
+💵 *GESTIONE SOLDI:*
+- \`.soldi [@user]\` - Vedi saldo
+- \`.daily\` - Bonus giornaliero
+- \`.weekly\` - Bonus settimanale
+- \`.monthly\` - Bonus mensile
+- \`.lavora\` - Lavora per guadagnare
+- \`.crimine\` - Commetti crimine
+
+🏦 *BANCA:*
+- \`.deposita [importo]\` - Deposita in banca
+- \`.preleva [importo]\` - Preleva da banca
+- \`.banca [@user]\` - Info banca
+
+💸 *TRANSAZIONI:*
+- \`.regalo @user [importo]\` - Dona soldi
+- \`.ruba @user\` - Tenta furto
+- \`.scommessa [importo]\` - Scommetti
+
+📈 *INVESTIMENTI:*
+- \`.investimento [importo]\` - Investi
+- \`.multiplica [importo]\` - Moltiplica
+- \`.prestito [importo]\` - Chiedi prestito
+- \`.ripaga\` - Ripaga prestito
+
+🏪 *SHOP:*
+- \`.shop\` - Negozio oggetti
+- \`.compra [id]\` - Compra oggetto
+- \`.inventario\` - I tuoi oggetti
+- \`.usa [id]\` - Usa oggetto
+
+📊 *CLASSIFICHE:*
+- \`.topmoney\` - Più ricchi
+- \`.topbank\` - Maggiori risparmi
+- \`.toplevel\` - Livelli più alti
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Lavora, investi e diventa il più ricco del gruppo!
+`;
+    await msg.reply(ecoText);
+    return;
+}
+
+// ========== MENU GIOCHI ==========
+else if (command === 'giochi' || command === 'games') {
+    const gamesText = `
+╔═══════════════════════╗
+║ 🎮 *GIOCHI*          ║
+╚═══════════════════════╝
+
+🎲 *GIOCHI CASUALI:*
+- \`.dado\` - Lancia dado
+- \`.moneta\` - Testa o croce
+- \`.8ball [domanda]\` - Palla magica
+- \`.scelta op1|op2\` - Scelta random
+
+🎰 *CASINO:*
+- \`.slot [bet]\` - Slot machine
+- \`.blackjack [bet]\` - Blackjack
+- \`.roulette [bet] [num/col]\` - Roulette
+- \`.rps [scelta]\` - Morra cinese
+
+🧠 *QUIZ & TRIVIA:*
+- \`.quiz\` - Quiz random
+- \`.trivia\` - Domanda trivia
+- \`.math\` - Matematica veloce
+- \`.indovina\` - Indovina numero
+- \`.indovinachi\` - Indovina personaggio
+
+🎯 *GIOCHI MULTIPLAYER:*
+- \`.tictactoe @user\` - Tris
+- \`.sfida @user\` - Sfida utente
+- \`.memory\` - Gioco memoria
+- \`.impiccato\` - Impiccato
+
+❤️ *AMORE & SOCIAL:*
+- \`.amore [@user]\` - Affinità
+- \`.ship @user1 @user2\` - Shippa
+- \`.creacoppia\` - Coppia random
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Gioca e guadagna XP per salire di livello!
+`;
+    await msg.reply(gamesText);
+    return;
+}
+
+// ========== MENU FUN ==========
+else if (command === 'fun' || command === 'divertimento') {
+    const funText = `
+╔═══════════════════════╗
+║ 🎪 *FUN & GIOCHI*     ║
+╚═══════════════════════╝
+
+🕹️ *GIOCHI VELOCI:*
+- \`.rps [scelta]\` - Morra cinese (scelte: sasso/carta/forbice)
+- \`.slot\` - Slot machine: prova la fortuna!
+- \`.indovina [num]\` - Indovina il numero (1-100)
+- \`.8ball [domanda]\` - Palla magica (risposta casuale)
+- \`.scelta op1|op2\` - Scegli tra due opzioni
+- \`.dado\` - Lancia un dado (1-6)
+- \`.moneta\` - Lancia una moneta (Testa/Croce)
+
+🃏 *GIOCHI DI CARTE & CASINO:*
+- \`.blackjack\` - Gioca a blackjack contro il bot
+- \`.roulette [color/num]\` - Scommetti colore (rosso/nero) o numero (0-36)
+
+🧠 *GIOCHI DI INTELLETTO:*
+- \`.quiz\` - Quiz casuale (domanda a scelta multipla)
+- \`.trivia\` - Trivia generale
+- \`.math\` - Domanda matematica veloce
+- \`.memory\` - Gioco memoria (coppie)
+- \`.tictactoe @user\` - Tris (gioca contro un utente)
+- \`.impiccato\` - Impiccato (indovina la parola)
+- \`.indovinachi\` - Indovina il personaggio
+
+💘 *LOVE & SOCIAL:*
+- \`.creacoppia\` - Crea coppia casuale nel gruppo
+- \`.ship (user1) (user2)\` - Valuta la compatibilità tra due utenti
+- \`.amore\` - Messaggio d'amore/citazione romantica
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Usa i comandi con le opzioni tra parentesi quando richiesto.
+🎯 Divertiti — e ricordati: alcuni giochi possono richiedere risorse (es. stato partita).
+`;
+
+    await msg.reply(funText);
+    return;
+}
+
+
+// ========== INFO GRUPPO ==========
+else if (command === 'info') {
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
     
     try {
-        const userId = mentioned[0].id._serialized;
-        const userName = mentioned[0].pushname || userId.split('@')[0];
+        const groupMetadata = chat;
+        const adminsCount = groupMetadata.participants.filter(p => p.isAdmin || p.isSuperAdmin).length;
+        const creationDate = groupMetadata.createdAt ? new Date(groupMetadata.createdAt * 1000).toLocaleDateString('it-IT') : 'Sconosciuta';
         
         initGroup(chat.id._serialized);
         const g = groupData[chat.id._serialized];
         
-        const previousWarns = g.warnings[userId] || 0;
-        g.warnings[userId] = 0;
-        saveData();
-        
-        await msg.reply(
-            `╔═══════════════════════╗
-║  🗑️ *WARNS CANCELLATI*║
+        let infoText = `╔═══════════════════════╗
+║  ℹ️ *INFO GRUPPO*     ║
 ╚═══════════════════════╝
 
-👤 Utente: *${userName}*
-📊 Warn precedenti: *${previousWarns}*
-✨ Warn attuali: *0*
+📝 *DETTAGLI:*
+- Nome: *${groupMetadata.name}*
+- Creato: *${creationDate}*
+- Descrizione: ${groupMetadata.description || 'Nessuna'}
+
+👥 *MEMBRI:*
+- Totali: *${groupMetadata.participants.length}*
+- Admin: *${adminsCount}*
+- Membri: *${groupMetadata.participants.length - adminsCount}*
+
+🛡️ *SICUREZZA:*
+- Antilink: ${g.antilink ? '✅' : '❌'}
+- Antibot: ${g.antiBot ? '✅' : '❌'}
+- Antispam: ${g.antiSpam ? '✅' : '❌'}
+- Slowmode: ${g.slowmode > 0 ? `✅ (${g.slowmode}s)` : '❌'}
+- Max Warns: *${g.maxWarns || 3}*
+
+📊 *STATISTICHE:*
+- Mutati: *${g.mutedUsers.length}*
+- Bannati: *${g.bannedUsers.length}*
+- Parole bloccate: *${g.blockedWords.length}*
+- Regole: ${g.rules ? '✅' : '❌'}
 
 ━━━━━━━━━━━━━━━━━━━━━
-✅ Tutti i warning sono stati rimossi!`
-        );
+🤖 Bot gestito da stocazzo`;
+        
+        await msg.reply(infoText);
         
     } catch (err) {
-        console.error('Errore clearwarns:', err);
-        await msg.reply('❌ Errore durante la cancellazione dei warning.');
+        console.error('Errore info gruppo:', err);
+        await msg.reply('❌ Errore nel recuperare le informazioni del gruppo.');
     }
 }
-
-        else if (command === 'antilink') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const status = args[0] ? args[0].toLowerCase() : null;
-            if (!['on', 'off'].includes(status)) {
-                initGroup(chat.id._serialized);
-                const currentStatus = groupData[chat.id._serialized].antilink ? '✅ ON' : '❌ OFF';
-                return msg.reply(`⚙️ 🔗 *ANTILINK*\n\nStato: ${currentStatus}\n\nUsa: .antilink on/off`);
-            }
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].antilink = (status === 'on');
-            saveData();
-            await msg.reply(`✅ 🔗 Antilink ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!`);
-        }
-
-        else if (command === 'antibot') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const status = args[0] ? args[0].toLowerCase() : null;
-            if (!['on', 'off'].includes(status)) {
-                initGroup(chat.id._serialized);
-                const currentStatus = groupData[chat.id._serialized].antiBot ? '✅ ON' : '❌ OFF';
-                return msg.reply(`⚙️ 🤖 *ANTIBOT*\n\nStato: ${currentStatus}\n\nUsa: .antibot on/off`);
-            }
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].antiBot = (status === 'on');
-            saveData();
-            await msg.reply(`✅ 🤖 Antibot ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!`);
-        }
-
-        else if (command === 'antispam') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const status = args[0]?.toLowerCase();
-            if (!['on', 'off'].includes(status)) return msg.reply('⚠️ Usa: .antispam on/off');
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].antiSpam = (status === 'on');
-            saveData();
-            await msg.reply(`✅ 💥 Anti-spam ${status === 'on' ? '*ATTIVATO*' : '*DISATTIVATO*'}!`);
-        }
-
-        else if (command === 'antiflood') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const status = args[0]?.toLowerCase();
-            if (!['on', 'off'].includes(status)) return msg.reply('⚠️ Usa: .antiflood on/off [maxMsg] [secondi]');
-            initGroup(chat.id._serialized);
-            automodConfig[chat.id._serialized].antiFlood = (status === 'on');
-            if (status === 'on') {
-                const maxMsg = parseInt(args[1]) || 5;
-                const timeWindow = parseInt(args[2]) || 10;
-                automodConfig[chat.id._serialized].maxMessages = maxMsg;
-                automodConfig[chat.id._serialized].timeWindow = timeWindow;
-            }
-            saveData();
-            await msg.reply(`✅ 💥 Antiflood ${status === 'on' ? `*ATTIVATO*\n\n📊 Max messaggi: ${automodConfig[chat.id._serialized].maxMessages}\n⏱️ Finestra: ${automodConfig[chat.id._serialized].timeWindow}s` : '*DISATTIVATO*'}!`);
-        }
-
-        else if (command === 'slowmode') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const seconds = parseInt(args[0]);
-            if (isNaN(seconds) || seconds < 0) {
-                return msg.reply('⚠️ Usa: .slowmode [secondi] (0 per disattivare)');
-            }
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].slowmode = seconds;
-            saveData();
-            await msg.reply(`✅ ⏱️ Slowmode ${seconds === 0 ? '*DISATTIVATO*' : `impostato a *${seconds}s*`}!`);
-        }
-
-        else if (command === 'blocca' || command === 'blockword') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const word = args.join(' ').toLowerCase();
-            if (!word) return msg.reply('⚠️ Specifica una parola!');
-            initGroup(chat.id._serialized);
-            if (!groupData[chat.id._serialized].blockedWords.includes(word)) {
-                groupData[chat.id._serialized].blockedWords.push(word);
-                saveData();
-                await msg.reply(`✅ 🚫 Parola *"${word}"* bloccata!`);
-            } else {
-                await msg.reply('⚠️ Parola già bloccata!');
-            }
-        }
-
-        else if (command === 'sblocca' || command === 'unblockword') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const word = args.join(' ').toLowerCase();
-            if (!word) return msg.reply('⚠️ Specifica una parola!');
-            initGroup(chat.id._serialized);
-            const idx = groupData[chat.id._serialized].blockedWords.indexOf(word);
-            if (idx !== -1) {
-                groupData[chat.id._serialized].blockedWords.splice(idx, 1);
-                saveData();
-                await msg.reply(`✅ Parola *"${word}"* sbloccata!`);
-            } else {
-                await msg.reply('⚠️ Parola non era bloccata!');
-            }
-        }
-
-        else if (command === 'listaparole') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            initGroup(chat.id._serialized);
-            const words = groupData[chat.id._serialized].blockedWords;
-            if (words.length === 0) return msg.reply('📋 Nessuna parola bloccata!');
-            await msg.reply(`📋 *PAROLE BLOCCATE* (${words.length})\n\n${words.map((w, i) => `${i + 1}. ${w}`).join('\n')}`);
-        }
-
-        else if (command === 'regole' || command === 'setrules') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            const rules = args.join(' ');
-            if (!rules) return msg.reply('⚠️ Usa: .regole [testo regole]');
-            initGroup(chat.id._serialized);
-            groupData[chat.id._serialized].rules = rules;
-            saveData();
-            await msg.reply('✅ 📜 Regole impostate con successo!');
-        }
-
-        else if (command === 'vediregole' || command === 'rules') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            initGroup(chat.id._serialized);
-            const rules = groupData[chat.id._serialized].rules;
-            if (!rules) return msg.reply('⚠️ Nessuna regola impostata! Gli admin possono impostarle con .regole');
-            await msg.reply(`📜 *REGOLE DEL GRUPPO*\n\n${rules}`);
-        }
-
-        else if (command === 'chiudi' || command === 'close') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            try {
-                await chat.setMessagesAdminsOnly(true);
-                await msg.reply('🔒 *GRUPPO CHIUSO*\n\nSolo gli admin possono scrivere.');
-            } catch {
-                await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
-            }
-        }
-
-        else if (command === 'apri' || command === 'open') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            try {
-                await chat.setMessagesAdminsOnly(false);
-                await msg.reply('🔓 *GRUPPO APERTO*\n\nTutti possono scrivere.');
-            } catch {
-                await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
-            }
-        }
-
-        else if (command === 'lock') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            try {
-                await chat.setInfoAdminsOnly(true);
-                await msg.reply('🔒 *IMPOSTAZIONI BLOCCATE*\n\nSolo admin possono modificare info gruppo.');
-            } catch {
-                await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
-            }
-        }
-
-        else if (command === 'unlock') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            try {
-                await chat.setInfoAdminsOnly(false);
-                await msg.reply('🔓 *IMPOSTAZIONI SBLOCCATE*\n\nTutti possono modificare info gruppo.');
-            } catch {
-                await msg.reply('❌ Errore! Assicurati che il bot sia admin.');
-            }
-        }
-
-        // ===== COMANDO R / DELETE =====
-else if (command === 'r' || command === 'delete') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    try {
-        const quoted = await msg.getQuotedMessage();
-        if (!quoted) return msg.reply('⚠️ Rispondi al messaggio che vuoi eliminare (usa la citazione)!');
-
-        // Prova a eliminare (true = delete for everyone where possibile)
-        try {
-            await quoted.delete(true);
-            await msg.reply('✅ 🗑️ Messaggio eliminato con successo!');
-        } catch (deleteErr) {
-            console.error('Errore durante quoted.delete:', deleteErr);
-            // Messaggio più descrittivo per l'utente
-            await msg.reply('❌ Non è stato possibile eliminare il messaggio per tutti. Potrebbe essere troppo vecchio o non autorizzato. Ho comunque tentato di eliminarlo localmente.');
-        }
-    } catch (err) {
-        console.error('Errore comando delete:', err);
-        await msg.reply('❌ Errore inatteso nell\'eliminazione del messaggio.');
-    }
-}
-
-// ===== COMANDO PROMUOVI / PROMOTE (p) =====
-else if (command === 'p' || command === 'promuovi' || command === 'promote') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-
-    const mentionedUsers = await msg.getMentions();
-    if (!mentionedUsers || mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente da promuovere! Es.: `.p @user`');
-
-    // Verifica che il bot sia admin (altrimenti non può promuovere)
-    try {
-        if (!await isBotAdmin(chat)) return msg.reply('❌ Il bot deve essere admin per poter promuovere altri utenti.');
-    } catch (e) {
-        console.error('Errore controllo isBotAdmin:', e);
-        // Non blocchiamo in modo drastico, ma avvisiamo
-        return msg.reply('❌ Impossibile verificare i permessi del bot. Assicurati che il bot sia admin.');
-    }
-
-    const promoted = [];
-    const failed = [];
-    const botId = (client && client.info && client.info.wid) ? client.info.wid._serialized : null;
-
-    for (const u of mentionedUsers) {
-        const uid = u.id && u.id._serialized ? u.id._serialized : null;
-        const display = u.pushname || u.name || (u.shortName ? u.shortName : (u.id && u.id._serialized)) || 'Utente';
-
-        // Evita di provare a promuovere il bot stesso
-        if (botId && uid === botId) {
-            failed.push({ display, reason: 'Impossibile promuovere il bot.' });
-            continue;
-        }
-
-        try {
-            // chat.promoteParticipants accetta array di id
-            await chat.promoteParticipants([uid]);
-            promoted.push(display);
-        } catch (err) {
-            console.error(`Errore promuovere ${display} (${uid}):`, err);
-            failed.push({ display, reason: (err && err.message) ? err.message : 'Errore sconosciuto' });
-        }
-    }
-
-    // Risposta riassuntiva
-    let reply = '';
-    if (promoted.length > 0) {
-        reply += `✅ Promossi: *${promoted.length}*\n` + promoted.map(n => `• ${n}`).join('\n') + '\n\n';
-    }
-    if (failed.length > 0) {
-        reply += `⚠️ Non promossi: *${failed.length}*\n` + failed.map(f => `• ${f.display} — ${f.reason}`).join('\n') + '\n\n';
-    }
-    if (!reply) reply = 'ℹ️ Nessuna azione eseguita.';
-    await msg.reply(reply.trim());
-}
-
-// ===== COMANDO DEGRADA / DEMOTE (d) =====
-else if (command === 'd' || command === 'degrada' || command === 'demote') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-
-    const mentionedUsers = await msg.getMentions();
-    if (!mentionedUsers || mentionedUsers.length === 0) return msg.reply('❌ Menziona almeno un utente da degradare! Es.: `.d @user`');
-
-    // Verifica che il bot sia admin (altrimenti non può degradare)
-    try {
-        if (!await isBotAdmin(chat)) return msg.reply('❌ Il bot deve essere admin per poter degradare altri utenti.');
-    } catch (e) {
-        console.error('Errore controllo isBotAdmin:', e);
-        return msg.reply('❌ Impossibile verificare i permessi del bot. Assicurati che il bot sia admin.');
-    }
-
-    const demoted = [];
-    const failed = [];
-    const botId = (client && client.info && client.info.wid) ? client.info.wid._serialized : null;
-
-    for (const u of mentionedUsers) {
-        const uid = u.id && u.id._serialized ? u.id._serialized : null;
-        const display = u.pushname || u.name || (u.shortName ? u.shortName : (u.id && u.id._serialized)) || 'Utente';
-
-        // Evita di degradare il bot stesso
-        if (botId && uid === botId) {
-            failed.push({ display, reason: 'Impossibile degradare il bot.' });
-            continue;
-        }
-
-        try {
-            await chat.demoteParticipants([uid]);
-            demoted.push(display);
-        } catch (err) {
-            console.error(`Errore degradare ${display} (${uid}):`, err);
-            failed.push({ display, reason: (err && err.message) ? err.message : 'Errore sconosciuto' });
-        }
-    }
-
-    // Risposta riassuntiva
-    let reply = '';
-    if (demoted.length > 0) {
-        reply += `✅ Degradati: *${demoted.length}*\n` + demoted.map(n => `• ${n}`).join('\n') + '\n\n';
-    }
-    if (failed.length > 0) {
-        reply += `⚠️ Non degradati: *${failed.length}*\n` + failed.map(f => `• ${f.display} — ${f.reason}`).join('\n') + '\n\n';
-    }
-    if (!reply) reply = 'ℹ️ Nessuna azione eseguita.';
-    await msg.reply(reply.trim());
-}
-
-        else if (command === 'admins') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            const admins = chat.participants.filter(p => p.isAdmin || p.isSuperAdmin);
-            let text = `👑 *LISTA ADMIN* (${admins.length})\n\n`;
-            for (let i = 0; i < admins.length; i++) {
-                const admin = admins[i];
-                text += `${i + 1}. ${admin.id.user}\n`;
-            }
-            await msg.reply(text);
-        }
-
-        else if (command === 'mutati') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            initGroup(chat.id._serialized);
-            const muted = groupData[chat.id._serialized].mutedUsers;
-            if (muted.length === 0) return msg.reply('📋 Nessun utente mutato!');
-            let text = `🔇 *UTENTI MUTATI* (${muted.length})\n\n`;
-            muted.forEach((id, i) => {
-                text += `${i + 1}. ${id.split('@')[0]}\n`;
-            });
-            await msg.reply(text);
-        }
-
-        else if (command === 'bannati') {
-            if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-            if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-            initGroup(chat.id._serialized);
-            const banned = groupData[chat.id._serialized].bannedUsers;
-            if (banned.length === 0) return msg.reply('📋 Nessun utente bannato!');
-            let text = `🚫 *UTENTI BANNATI* (${banned.length})\n\n`;
-            banned.forEach((id, i) => {
-                text += `${i + 1}. ${id.split('@')[0]}\n`;
-            });
-            await msg.reply(text);
-        }
 
         else if (command === 'setmaxwarns') {
             if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
@@ -2988,97 +3578,44 @@ else if (command === 'purge') {
     }
 }
 
-// ---------------- COMANDO PIN (sostituisci il tuo blocco con questo) ----------------
+// ========== PIN MESSAGE ==========
 else if (command === 'pin') {
-  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-
-  try {
-    let messageToPin = null;
-
-    // Prova a ottenere il messaggio quotato
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
     try {
-      const quotedMsg = await msg.getQuotedMessage();
-      if (quotedMsg) messageToPin = quotedMsg;
-    } catch (e) {
-      console.log('Nessun messaggio quotato');
+        const quoted = await msg.getQuotedMessage();
+        if (!quoted) {
+            return msg.reply('⚠️ Rispondi al messaggio da fissare!\n\n💡 Quota il messaggio e usa `.pin`');
+        }
+        
+        await quoted.pin();
+        await msg.reply('✅ 📌 Messaggio fissato!');
+        
+    } catch (err) {
+        console.error('Errore pin:', err);
+        await msg.reply('❌ Impossibile fissare il messaggio. Verifica i permessi.');
     }
-
-    if (!messageToPin) {
-      return msg.reply('⚠️ Rispondi a un messaggio per fissarlo!');
-    }
-
-    // Verifica che il bot sia admin
-    if (!await isBotAdmin(chat)) {
-      return msg.reply('❌ Il bot deve essere admin per fissare messaggi!');
-    }
-
-    // Segnala attività e tenta il pin in pagina
-    try {
-      await chat.sendStateRecording(); // opzionale, segnala attività
-    } catch (e) { /* non bloccante */ }
-
-    // Esegui l'azione resiliente
-    await evaluatePinUnpin(client.pupPage, messageToPin.id._serialized, true);
-
-    await msg.reply('📌 Messaggio fissato con successo!');
-  } catch (err) {
-    console.error('Errore pin:', err);
-    // Se vuoi maggior diagnostica, puoi abilitare getStorePinCandidates qui e loggarla
-    try {
-      if (client && client.pupPage) {
-        const diag = await getStorePinCandidates(client.pupPage);
-        console.error('Diagnostica window.Store:', diag);
-      }
-    } catch (diagErr) {
-      console.error('Errore diagnostica:', diagErr);
-    }
-    await msg.reply('❌ Errore nel fissare il messaggio: ' + (err && err.message ? err.message : String(err)));
-  }
 }
 
-// ---------------- COMANDO UNPIN (sostituisci il tuo blocco con questo) ----------------
+// ========== UNPIN MESSAGE ==========
 else if (command === 'unpin') {
-  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-
-  try {
-    let messageToUnpin = null;
-
+    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
     try {
-      const quotedMsg = await msg.getQuotedMessage();
-      if (quotedMsg) messageToUnpin = quotedMsg;
-    } catch (e) {
-      console.log('Nessun messaggio quotato');
+        const quoted = await msg.getQuotedMessage();
+        if (!quoted) {
+            return msg.reply('⚠️ Rispondi al messaggio fissato da rimuovere!\n\n💡 Quota il messaggio e usa `.unpin`');
+        }
+        
+        await quoted.unpin();
+        await msg.reply('✅ 📌 Pin rimosso!');
+        
+    } catch (err) {
+        console.error('Errore unpin:', err);
+        await msg.reply('❌ Impossibile rimuovere il pin. Verifica i permessi.');
     }
-
-    if (!messageToUnpin) {
-      return msg.reply('⚠️ Rispondi a un messaggio fissato per rimuoverlo!');
-    }
-
-    if (!await isBotAdmin(chat)) {
-      return msg.reply('❌ Il bot deve essere admin per rimuovere messaggi fissati!');
-    }
-
-    try {
-      await chat.sendStateRecording();
-    } catch (e) { /* non bloccante */ }
-
-    await evaluatePinUnpin(client.pupPage, messageToUnpin.id._serialized, false);
-
-    await msg.reply('📌 Messaggio rimosso dai fissati!');
-  } catch (err) {
-    console.error('Errore unpin:', err);
-    try {
-      if (client && client.pupPage) {
-        const diag = await getStorePinCandidates(client.pupPage);
-        console.error('Diagnostica window.Store:', diag);
-      }
-    } catch (diagErr) {
-      console.error('Errore diagnostica:', diagErr);
-    }
-    await msg.reply('❌ Errore nel rimuovere il pin: ' + (err && err.message ? err.message : String(err)));
-  }
 }
 
    // ===== COMANDO .SHIP =====
@@ -3236,6 +3773,90 @@ else if (command === 'profilo' || command === 'profile') {
         await msg.reply('❌ Errore nel recuperare il profilo.');
     }
 }
+
+// ========== CLEAR CACHE (DS) ==========
+else if (command === 'ds') {
+    // Permessi: se è in gruppo richiedi admin, altrimenti lascia passare (es. DM)
+    if (isGroup && !await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
+    
+    try {
+        // funzione helper per contare elementi in vari tipi di container
+        const countItems = (c) => {
+            if (!c) return 0;
+            if (typeof c.size === 'number') return c.size;         // Map/Set
+            if (Array.isArray(c)) return c.length;                // Array
+            if (typeof c === 'object') return Object.keys(c).length; // plain object
+            return 0;
+        };
+
+        // Conta prima della pulizia (per report)
+        const before = {
+            groupData: countItems(groupData),
+            games: countItems(games),
+            economy: countItems(economy),
+            userStats: countItems(userStats),
+            marriages: countItems(marriages),
+            pets: countItems(pets),
+            warnings: countItems(warnings),
+            automodConfig: countItems(automodConfig)
+        };
+
+        // Pulisci in modo sicuro: se sono strutture con .clear() usalo, altrimenti re-inizializza
+        if (groupData && typeof groupData.clear === 'function') groupData.clear(); else groupData = {};
+        if (games && typeof games.clear === 'function') games.clear(); else games = {};
+        if (economy && typeof economy.clear === 'function') economy.clear(); else economy = {};
+        if (userStats && typeof userStats.clear === 'function') userStats.clear(); else userStats = {};
+        if (marriages && typeof marriages.clear === 'function') marriages.clear(); else marriages = {};
+        if (pets && typeof pets.clear === 'function') pets.clear(); else pets = {};
+        if (warnings && typeof warnings.clear === 'function') warnings.clear(); else warnings = {};
+        if (automodConfig && typeof automodConfig.clear === 'function') automodConfig.clear(); else automodConfig = {};
+
+        // Prova a liberare memoria (se Node è stato avviato con --expose-gc)
+        let gcMsg = '⚠️ GC non disponibile (avvia node con --expose-gc per usarlo)';
+        if (typeof global !== 'undefined' && typeof global.gc === 'function') {
+            try {
+                global.gc();
+                gcMsg = '✅ Garbage collector eseguito (global.gc())';
+            } catch (e) {
+                gcMsg = '⚠️ Tentativo GC fallito: ' + e.message;
+            }
+        }
+
+        // Se hai una funzione per salvare su disco (es. saveData), chiamala per mantenere coerenza
+        if (typeof saveData === 'function') {
+            try {
+                await saveData();
+            } catch (e) {
+                // non bloccare l'operazione se save fallisce
+                console.error('saveData fallita dopo ds:', e);
+            }
+        }
+
+        // Report all'utente (conteggio prima -> pulito)
+        const report = [
+            `✅ Cache pulita! Il bot resta attivo.`,
+            ``,
+            `Elementi rimossi (prima della pulizia):`,
+            `• groupData: ${before.groupData}`,
+            `• games: ${before.games}`,
+            `• economy: ${before.economy}`,
+            `• userStats: ${before.userStats}`,
+            `• marriages: ${before.marriages}`,
+            `• pets: ${before.pets}`,
+            `• warnings: ${before.warnings}`,
+            `• automodConfig: ${before.automodConfig}`,
+            ``,
+            `${gcMsg}`
+        ].join('\n');
+
+        await msg.reply(report);
+
+    } catch (err) {
+        console.error('Errore comando .ds:', err);
+        await msg.reply('❌ Errore durante la pulizia della cache. Controlla i log.');
+    }
+}
+
 
 
 
