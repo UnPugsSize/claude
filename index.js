@@ -932,12 +932,12 @@ else if (command === 'hidetag') {
     }
 }
 
-// ========== KICK ==========
+// ========== KICK (solo kick, senza ban permanente) ==========
 else if (command === 'kick' || command === 'remove') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
     if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rimuovere utenti!');
-    
+
     const mentioned = await msg.getMentions();
     if (mentioned.length === 0) {
         return msg.reply(
@@ -946,58 +946,49 @@ else if (command === 'kick' || command === 'remove') {
             '📝 *Esempio:* `.kick @mario Spam`'
         );
     }
-    
+
     try {
         const toKick = mentioned[0];
         const toKickId = toKick.id._serialized;
         const toKickNumber = toKickId.split('@')[0];
         const toKickName = await getUserDisplayName(toKickId, chat);
         const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
-        
+
         // Verifica se è admin
         const freshChat = await client.getChatById(chat.id._serialized);
         const participant = freshChat.participants.find(p => p.id._serialized === toKickId);
-        
+
         if (!participant) {
             return msg.reply('❌ Utente non trovato nel gruppo!');
         }
-        
+
         if (participant.isAdmin || participant.isSuperAdmin) {
             return msg.reply('⚠️ Non posso rimuovere un admin! Degradalo prima con `.d @utente`');
         }
-        
-        // Rimuovi
+
+        // Rimuovi (kick) — NON aggiungere alla lista dei bannati
         await chat.removeParticipants([toKickId]);
-        
-        // Aggiungi a bannati (opzionale)
-        initGroup(chat.id._serialized);
-        if (!groupData[chat.id._serialized].bannedUsers.includes(toKickId)) {
-            groupData[chat.id._serialized].bannedUsers.push(toKickId);
-            saveData();
-        }
-        
+
         await msg.reply(
-            `╔═══════════════════════╗
-║  👢 *UTENTE RIMOSSO*  ║
-╚═══════════════════════╝
-
-👤 *Utente:* ${toKickName}
-📱 *Numero:* ${toKickNumber}
-📝 *Motivo:* ${reason}
-👮 *Admin:* ${msg.author.split('@')[0]}
-
-━━━━━━━━━━━━━━━━━━━━━
-✅ L'utente è stato espulso dal gruppo.
-🚫 È stato aggiunto alla lista bannati.`
+            `╔═══════════════════════╗\n` +
+            `║  👢 *UTENTE RIMOSO*  ║\n` +
+            `╚═══════════════════════╝\n\n` +
+            `👤 *Utente:* ${toKickName}\n` +
+            `📱 *Numero:* ${toKickNumber}\n` +
+            `📝 *Motivo:* ${reason}\n` +
+            `👮 *Admin:* ${msg.author.split('@')[0]}\n\n` +
+            `━━━━━━━━━━━━━━━━━━━━━\n` +
+            `✅ L'utente è stato espulso dal gruppo.`
         );
-        
+
         console.log(`[KICK] ${toKickName} rimosso da ${msg.author}`);
-        
+
     } catch (err) {
         console.error('Errore kick:', err);
         await msg.reply('❌ Errore durante la rimozione. Verifica che:\n• Il bot sia admin\n• L\'utente non sia admin\n• L\'utente sia nel gruppo');
     }
 }
+
 
 // ========== MUTA ==========
 else if (command === 'muta' || command === 'mute') {
@@ -3929,5 +3920,6 @@ process.on('SIGTERM', () => { saveData(); process.exit(); });
 
 // avvia il client
 client.initialize();
+
 
 
