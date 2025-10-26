@@ -2,9 +2,13 @@ const { Client, LocalAuth, MessageMedia, Buttons, List } = require('whatsapp-web
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const autoAcceptRequests = {};
+const gameStates = new Map();
+const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const choice = (arr) => arr[random(0, arr.length - 1)];
+const percentage = () => random(0, 100);
 
 let text = '';
-let gameStates = {};
+
 
 // ---------------------- DATABASE ----------------------
 let groupData = {};
@@ -462,12 +466,15 @@ function formatTime(seconds) {
     return result.trim();
 }
 
-// ---------------------- MESSAGGI ----------------------
+// ---------------------- HANDLER MESSAGGI ----------------------
 client.on('message', async (msg) => {
     try {
         const chat = await msg.getChat();
         const isGroup = chat.isGroup;
+        
+        // Inizializza gruppo se necessario
         if (isGroup) initGroup(chat.id._serialized);
+        
         const groupInfo = isGroup ? groupData[chat.id._serialized] : null;
         const automod = isGroup ? automodConfig[chat.id._serialized] : null;
         const userNumber = await getNormalizedNumber(msg);
@@ -2159,39 +2166,128 @@ else if (command === 'fun' || command === 'divertimento') {
 ╚═══════════════════════╝
 
 🕹️ *GIOCHI VELOCI:*
-- \`.rps [scelta]\` - Morra cinese (scelte: sasso/carta/forbice)
-- \`.slot\` - Slot machine: prova la fortuna!
-- \`.indovina [num]\` - Indovina il numero (1-100)
-- \`.8ball [domanda]\` - Palla magica (risposta casuale)
-- \`.scelta op1|op2\` - Scegli tra due opzioni
-- \`.dado\` - Lancia un dado (1-6)
-- \`.moneta\` - Lancia una moneta (Testa/Croce)
+- \`.rps [scelta]\` - Morra cinese
+- \`.slot\` - Slot machine
+- \`.indovina [num]\` - Indovina numero (1-100)
+- \`.8ball [domanda]\` - Palla magica
+- \`.scelta op1|op2\` - Scegli tra opzioni
+- \`.dado\` - Lancia dado (1-6)
+- \`.moneta\` - Lancia moneta
+- \`.grattaevinci\` - Gratta e vinci
+- \`.lotteria\` - Numeri fortunati
 
-🃏 *GIOCHI DI CARTE & CASINO:*
-- \`.blackjack\` - Gioca a blackjack contro il bot
-- \`.roulette [color/num]\` - Scommetti colore (rosso/nero) o numero (0-36)
+🃏 *CASINO & CARTE:*
+- \`.blackjack\` - Blackjack vs bot
+- \`.roulette [color/num]\` - Roulette
+- \`.poker\` - Mano di poker
+- \`.bingo\` - Cartella bingo
+- \`.scommessa [importo]\` - Scommetti
 
-🧠 *GIOCHI DI INTELLETTO:*
-- \`.quiz\` - Quiz casuale (domanda a scelta multipla)
-- \`.trivia\` - Trivia generale
-- \`.math\` - Domanda matematica veloce
-- \`.memory\` - Gioco memoria (coppie)
-- \`.tictactoe @user\` - Tris (gioca contro un utente)
-- \`.impiccato\` - Impiccato (indovina la parola)
-- \`.indovinachi\` - Indovina il personaggio
+🧠 *INTELLETTO:*
+- \`.quiz\` - Quiz a scelta multipla
+- \`.trivia\` - Fatto casuale
+- \`.math\` - Domanda matematica
+- \`.enigma\` - Indovinello
+- \`.parola\` - Anagramma
 
-💘 *LOVE & SOCIAL:*
-- \`.creacoppia\` - Crea coppia casuale nel gruppo
-- \`.ship (user1) (user2)\` - Valuta la compatibilità tra due utenti
-- \`.amore\` - Messaggio d'amore/citazione romantica
+💘 *AMORE & ROMANTICO:*
+- \`.ship @user1 @user2\` - Compatibilità
+- \`.creacoppia\` - Coppia random
+- \`.amore\` - Citazione romantica
+- \`.bacio @user\` - Bacio virtuale
+- \`.abbraccio @user\` - Abbraccio
+- \`.appuntamento @user\` - Chiedi appuntamento
+- \`.complimento @user\` - Complimento
+- \`.lovetest @user\` - Test amore
+- \`.cuore\` - ASCII art cuore
+- \`.rosarossa @user\` - Regala rosa
+- \`.poesia\` - Poesia d'amore
+- \`.dedica @user [testo]\` - Dedica
+- \`.matrimonio @user\` - Proposta
+- \`.lettera @user\` - Lettera d'amore
+- \`.serenata @user\` - Serenata
+
+🔥 *PICCANTE & SPICY:*
+- \`.obbligo\` - Obbligo osé
+- \`.verita\` - Verità piccante
+- \`.osare @user\` - Sfida piccante
+- \`.spin\` - Gira la bottiglia
+- \`.flirt @user\` - Frase approccio
+- \`.hotrate @user\` - Vota hotness (1-10)
+- \`.seduzione @user\` - Tecnica seduzione
+- \`.wink @user\` - Occhiolino
+- \`.sussurro @user [testo]\` - Sussurro
+- \`.piccante\` - Fatto piccante
+- \`.desiderio\` - Desiderio segreto
+- \`.fantasia\` - Scenario spicy
+- \`.gioco7minuti @user\` - 7 minuti paradiso
+- \`.spogliarello\` - Strip virtuale
+- \`.dirty\` - Domanda sporca
+- \`.naughty @user\` - Messaggio birichino
+- \`.temperatura @user\` - Temperatura tra voi
+- \`.chimica @user\` - Chimica fisica (%)
+- \`.attrazione @user\` - Livello attrazione
+- \`.tentazione\` - Frase tentatrice
 
 ━━━━━━━━━━━━━━━━━━━━━
-💡 Usa i comandi con le opzioni tra parentesi quando richiesto.
-🎯 Divertiti — e ricordati: alcuni giochi possono richiedere risorse (es. stato partita).
+💡 Digita \`.fun2\` per altri comandi!
+🎯 Divertiti responsabilmente!
+⚠️ I comandi piccanti sono per 18+
 `;
 
     await msg.reply(funText);
-    return;
+}
+
+// ========== MENU FUN 2 ==========
+else if (command === 'fun2') {
+    const funText2 = `
+╔═══════════════════════╗
+║ 🎪 *FUN & GIOCHI* (2) ║
+╚═══════════════════════╝
+
+🎭 *SOCIAL & ACTION:*
+- \`.schiaffo @user\` - Schiaffo virtuale
+- \`.poke @user\` - Stuzzica
+- \`.pat @user\` - Carezza
+- \`.feed @user\` - Dai da mangiare
+- \`.tickle @user\` - Solletico
+- \`.punch @user\` - Pugno scherzoso
+- \`.kill @user\` - Uccisione comica
+- \`.slap @user\` - Schiaffone
+- \`.highfive @user\` - Batti il cinque
+
+🎲 *RANDOM & GENERATORI:*
+- \`.nome\` - Nome casuale
+- \`.nickname\` - Nickname divertente
+- \`.scusa\` - Scusa random
+- \`.insulto @user\` - Insulto comico
+- \`.pickup\` - Frase rimorchio cringe
+- \`.fatto\` - Fatto interessante
+- \`.consiglio\` - Consiglio del giorno
+- \`.fortuna\` - Predizione fortuna
+- \`.personalita\` - Analisi personalità
+- \`.superpotere\` - Superpotere assegnato
+- \`.lavoro\` - Lavoro futuro
+- \`.animale\` - Animale spirito guida
+
+🎉 *PARTY & DIVERTENTE:*
+- \`.festa\` - Festa virtuale
+- \`.karaoke\` - Canzone karaoke
+- \`.balla\` - GIF ballo
+- \`.meme\` - Meme del giorno
+- \`.joke\` - Barzelletta
+- \`.roast @user\` - Roast comico
+- \`.vibe\` - Vibe check
+- \`.mood\` - Umore di oggi
+- \`.aesthetic\` - Aesthetic casuale
+- \`.zodiac\` - Oroscopo del giorno
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Digita \`.fun\` per tornare al menu principale!
+🎯 Divertiti e usa con rispetto!
+`;
+
+    await msg.reply(funText2);
 }
 
 
@@ -2640,365 +2736,2070 @@ else if (command === 'info') {
             }
         }
 
-        // ===== GIOCHI =====
         
-        if (command === 'rps') {
-            const scelta = args[0]?.toLowerCase();
-            const opzioni = ['sasso', 'carta', 'forbici'];
-            if (!opzioni.includes(scelta)) return msg.reply('⚠️ Usa: .rps sasso/carta/forbici');
-            const botScelta = opzioni[Math.floor(Math.random() * 3)];
-            let risultato = '';
-            if (scelta === botScelta) risultato = '🤝 Pareggio!';
-            else if (
-                (scelta === 'sasso' && botScelta === 'forbici') ||
-                (scelta === 'carta' && botScelta === 'sasso') ||
-                (scelta === 'forbici' && botScelta === 'carta')
-            ) risultato = '🎉 Hai vinto!';
-            else risultato = '😢 Hai perso!';
-            await msg.reply(`🎮 *MORRA CINESE*\n\n👤 Tu: ${scelta}\n🤖 Bot: ${botScelta}\n\n${risultato}`);
+
+    try {
+        
+        // ═══════════════════════════════════════
+        // 🕹️ GIOCHI VELOCI
+        // ═══════════════════════════════════════
+        
+        if (command === 'rps' || command === 'morra') {
+            const choices = ['sasso', 'carta', 'forbice'];
+            const userChoice = args[0]?.toLowerCase();
+            
+            if (!userChoice || !choices.includes(userChoice)) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Scegli: sasso, carta o forbice\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.rps sasso`\n' +
+                    '• `.morra carta`\n' +
+                    '• `.rps forbice`'
+                );
+            }
+            
+            const botChoice = choice(choices);
+            let result = '';
+            let emoji = '';
+            
+            if (userChoice === botChoice) {
+                result = 'PAREGGIO!';
+                emoji = '🤝';
+            } else if (
+                (userChoice === 'sasso' && botChoice === 'forbice') ||
+                (userChoice === 'carta' && botChoice === 'sasso') ||
+                (userChoice === 'forbice' && botChoice === 'carta')
+            ) {
+                result = 'HAI VINTO!';
+                emoji = '🎉';
+            } else {
+                result = 'HAI PERSO!';
+                emoji = '😭';
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║  🎮 *MORRA CINESE*    ║
+╚═══════════════════════╝
+
+👤 *Tu:* ${userChoice}
+🤖 *Bot:* ${botChoice}
+
+━━━━━━━━━━━━━━━━━━━━━
+${emoji} *${result}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== SLOT ==========
         else if (command === 'slot') {
-            const simboli = ['🍒', '🍋', '🍊', '🍇', '💎', '7️⃣'];
-            const r1 = simboli[Math.floor(Math.random() * simboli.length)];
-            const r2 = simboli[Math.floor(Math.random() * simboli.length)];
-            const r3 = simboli[Math.floor(Math.random() * simboli.length)];
-            let result = `🎰 *SLOT MACHINE*\n\n[ ${r1} | ${r2} | ${r3} ]\n\n`;
-            if (r1 === r2 && r2 === r3) result += '💰 JACKPOT! Tre uguali!';
-            else if (r1 === r2 || r2 === r3 || r1 === r3) result += '✨ Due uguali! Piccola vincita!';
-            else result += '😢 Nessuna vincita, riprova!';
-            await msg.reply(result);
+            const symbols = ['🍒', '🍋', '🍊', '🍇', '💎', '7️⃣', '🔔', '⭐'];
+            const slot1 = choice(symbols);
+            const slot2 = choice(symbols);
+            const slot3 = choice(symbols);
+            
+            let result = '';
+            let prize = '';
+            
+            if (slot1 === slot2 && slot2 === slot3) {
+                if (slot1 === '7️⃣') {
+                    result = 'JACKPOT!!! 💰💰💰';
+                    prize = '🎰 Vincita: 10.000 punti!';
+                } else if (slot1 === '💎') {
+                    result = 'SUPER WIN! 💎💎💎';
+                    prize = '💰 Vincita: 5.000 punti!';
+                } else {
+                    result = 'HAI VINTO! 🎉';
+                    prize = '💵 Vincita: 1.000 punti!';
+                }
+            } else if (slot1 === slot2 || slot2 === slot3 || slot1 === slot3) {
+                result = 'Piccola vincita! ✨';
+                prize = '💰 Vincita: 100 punti!';
+            } else {
+                result = 'Riprova! 😢';
+                prize = '💸 Nessuna vincita';
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║  🎰 *SLOT MACHINE*    ║
+╚═══════════════════════╝
+
+┌─────────────────┐
+│  ${slot1}  │  ${slot2}  │  ${slot3}  │
+└─────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+${result}
+${prize}`;
+            
+            await msg.reply(response);
         }
 
+        // ========== INDOVINA ==========
         else if (command === 'indovina') {
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            if (!args[0]) {
-                gameStates[chatId].indovina = {
-                    numero: Math.floor(Math.random() * 100) + 1,
-                    tentativi: 0
-                };
-                saveData();
-                return msg.reply('🎲 *INDOVINA IL NUMERO*\n\nHo pensato a un numero tra 1 e 100!\nUsa .indovina [numero] per provare!');
+            const userNum = parseInt(args[0]);
+            const secretNum = random(1, 100);
+            
+            if (!userNum || userNum < 1 || userNum > 100) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Scegli un numero tra 1 e 100\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.indovina 50`\n' +
+                    '• `.indovina 27`'
+                );
             }
-            if (!gameStates[chatId].indovina) return msg.reply('⚠️ Nessuna partita attiva! Usa .indovina per iniziare.');
-            const num = parseInt(args[0]);
-            if (isNaN(num)) return msg.reply('⚠️ Inserisci un numero valido!');
-            const game = gameStates[chatId].indovina;
-            game.tentativi++;
-            if (num === game.numero) {
-                await msg.reply(`🎉 *CORRETTO!*\n\nIl numero era ${game.numero}!\nTentativi: ${game.tentativi}`);
-                delete gameStates[chatId].indovina;
-                saveData();
-            } else if (num < game.numero) {
-                await msg.reply(`📈 Troppo basso! Tentativo ${game.tentativi}`);
+            
+            const diff = Math.abs(userNum - secretNum);
+            let hint = '';
+            let emoji = '';
+            
+            if (userNum === secretNum) {
+                const response = `
+╔═══════════════════════╗
+║  🎯 *INDOVINA NUMERO* ║
+╚═══════════════════════╝
+
+🎉 *INCREDIBILE!*
+Hai indovinato al primo colpo!
+
+━━━━━━━━━━━━━━━━━━━━━
+🔢 Numero segreto: *${secretNum}*
+👤 Tuo numero: *${userNum}*
+
+🏆 *VITTORIA PERFETTA!*`;
+                
+                return msg.reply(response);
+            }
+            
+            if (diff <= 5) {
+                hint = 'CALDISSIMO!';
+                emoji = '🔥🔥🔥';
+            } else if (diff <= 10) {
+                hint = 'Molto caldo!';
+                emoji = '♨️♨️';
+            } else if (diff <= 20) {
+                hint = 'Caldo';
+                emoji = '🌡️';
+            } else if (diff <= 30) {
+                hint = 'Tiepido';
+                emoji = '😐';
             } else {
-                await msg.reply(`📉 Troppo alto! Tentativo ${game.tentativi}`);
+                hint = 'Freddo';
+                emoji = '❄️';
             }
-            saveData();
+            
+            const response = `
+╔═══════════════════════╗
+║  🎯 *INDOVINA NUMERO* ║
+╚═══════════════════════╝
+
+❌ *Sbagliato!*
+
+━━━━━━━━━━━━━━━━━━━━━
+🔢 Numero segreto: *${secretNum}*
+👤 Tuo numero: *${userNum}*
+📊 Differenza: ${diff}
+
+${emoji} *${hint}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== 8BALL ==========
         else if (command === '8ball') {
-            if (!args.length) return msg.reply('⚠️ Fai una domanda! Es: .8ball andrà tutto bene?');
-            const risposte = [
-                '✅ Sì, assolutamente', '❌ No', '🤔 Forse', '🔮 Molto probabile',
-                '⚠️ Non ci contare', '✨ Certamente', '🌟 Le stelle dicono di sì',
-                '💫 Rifai la domanda più tardi', '🎱 Meglio di no', '🎯 Senza dubbio',
-                '🌀 Non posso prevederlo ora', '💭 Concentrati e richiedi'
+            const responses = [
+                { text: 'Certamente!', emoji: '✅', type: 'positive' },
+                { text: 'Senza dubbio!', emoji: '✅', type: 'positive' },
+                { text: 'Assolutamente sì!', emoji: '✅', type: 'positive' },
+                { text: 'Puoi contarci!', emoji: '✅', type: 'positive' },
+                { text: 'Sì, decisamente!', emoji: '✅', type: 'positive' },
+                { text: 'Forse...', emoji: '🤔', type: 'maybe' },
+                { text: 'Non sono sicuro...', emoji: '🤔', type: 'maybe' },
+                { text: 'Chiedimelo dopo', emoji: '🤔', type: 'maybe' },
+                { text: 'Meglio non dirlo ora', emoji: '🤔', type: 'maybe' },
+                { text: 'Concentrati e riprova', emoji: '🤔', type: 'maybe' },
+                { text: 'No', emoji: '❌', type: 'negative' },
+                { text: 'Assolutamente no!', emoji: '❌', type: 'negative' },
+                { text: 'Non ci contare', emoji: '❌', type: 'negative' },
+                { text: 'Le mie fonti dicono no', emoji: '❌', type: 'negative' },
+                { text: 'Molto dubbio', emoji: '❌', type: 'negative' }
             ];
-            await msg.reply(`🎱 *PALLA MAGICA*\n\n${risposte[Math.floor(Math.random() * risposte.length)]}`);
+            
+            if (args.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Fai una domanda alla palla magica!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.8ball sarò ricco?`\n' +
+                    '• `.8ball troverò l\'amore?`\n' +
+                    '• `.8ball vinco la lotteria?`'
+                );
+            }
+            
+            const answer = choice(responses);
+            const question = args.join(' ');
+            
+            const response = `
+╔═══════════════════════╗
+║  🎱 *PALLA MAGICA 8*  ║
+╚═══════════════════════╝
+
+❓ *Domanda:*
+${question}
+
+━━━━━━━━━━━━━━━━━━━━━
+${answer.emoji} *${answer.text}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== SCELTA ==========
         else if (command === 'scelta') {
-            const opzioni = msg.body.slice(8).split('|').map(o => o.trim());
-            if (opzioni.length < 2) return msg.reply('⚠️ Usa: .scelta opzione1|opzione2|opzione3');
-            const scelta = opzioni[Math.floor(Math.random() * opzioni.length)];
-            await msg.reply(`🎲 *SCELTA CASUALE*\n\nHo scelto: *${scelta}*`);
+            const input = msg.body.slice(PREFIX.length + 7);
+            const options = input.split('|').map(o => o.trim()).filter(o => o);
+            
+            if (options.length < 2) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Separa le opzioni con |\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.scelta pizza|pasta`\n' +
+                    '• `.scelta mare|montagna|città`\n' +
+                    '• `.scelta sì|no|forse`'
+                );
+            }
+            
+            const selected = choice(options);
+            const optionsList = options.map((opt, i) => `${i + 1}. ${opt}`).join('\n');
+            
+            const response = `
+╔═══════════════════════╗
+║  🎯 *SCELTA CASUALE*  ║
+╚═══════════════════════╝
+
+📋 *Opzioni:*
+${optionsList}
+
+━━━━━━━━━━━━━━━━━━━━━
+✨ *Ho scelto:*
+🎲 *${selected}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== DADO ==========
         else if (command === 'dado') {
-            const risultato = Math.floor(Math.random() * 6) + 1;
-            const dadi = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-            await msg.reply(`🎲 *DADO*\n\n${dadi[risultato-1]} Hai fatto: *${risultato}*`);
+            const result = random(1, 6);
+            const diceEmoji = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][result - 1];
+            
+            const response = `
+╔═══════════════════════╗
+║     🎲 *DADO*         ║
+╚═══════════════════════╝
+
+        ${diceEmoji}
+
+━━━━━━━━━━━━━━━━━━━━━
+🎯 *Risultato: ${result}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== MONETA ==========
         else if (command === 'moneta') {
-            const risultato = Math.random() < 0.5 ? 'Testa' : 'Croce';
-            const emoji = risultato === 'Testa' ? '👑' : '🪙';
-            await msg.reply(`${emoji} *MONETA*\n\nRisultato: *${risultato}*`);
+            const result = random(0, 1);
+            const face = result === 0 ? 'Testa' : 'Croce';
+            const emoji = result === 0 ? '👤' : '✖️';
+            
+            const response = `
+╔═══════════════════════╗
+║  🪙 *LANCIA MONETA*   ║
+╚═══════════════════════╝
+
+        ${emoji}
+
+━━━━━━━━━━━━━━━━━━━━━
+🎯 *Risultato: ${face}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== GRATTA E VINCI ==========
+        else if (command === 'grattaevinci') {
+            const symbols = ['🍒', '🍋', '⭐', '💎', '7️⃣', '🔔'];
+            const results = Array(9).fill(0).map(() => choice(symbols));
+            
+            const grid = `
+┌───┬───┬───┐
+│ ${results[0]} │ ${results[1]} │ ${results[2]} │
+├───┼───┼───┤
+│ ${results[3]} │ ${results[4]} │ ${results[5]} │
+├───┼───┼───┤
+│ ${results[6]} │ ${results[7]} │ ${results[8]} │
+└───┴───┴───┘`;
+            
+            // Trova simbolo vincente
+            const symbolCounts = {};
+            results.forEach(s => symbolCounts[s] = (symbolCounts[s] || 0) + 1);
+            const winSymbol = Object.keys(symbolCounts).find(s => symbolCounts[s] >= 3);
+            
+            let prize = '';
+            let result = '';
+            
+            if (winSymbol) {
+                const count = symbolCounts[winSymbol];
+                if (count >= 5) {
+                    result = '🎰 SUPER JACKPOT!!!';
+                    prize = '💰 Vincita: 50.000 punti!';
+                } else if (count === 4) {
+                    result = '🎉 GRANDE VINCITA!';
+                    prize = '💵 Vincita: 10.000 punti!';
+                } else {
+                    result = '✨ HAI VINTO!';
+                    prize = '💰 Vincita: 1.000 punti!';
+                }
+            } else {
+                result = '😢 Non hai vinto';
+                prize = '💸 Ritenta!';
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║  🎫 *GRATTA E VINCI*  ║
+╚═══════════════════════╝
+
+${grid}
+
+━━━━━━━━━━━━━━━━━━━━━
+${result}
+${prize}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== LOTTERIA ==========
+        else if (command === 'lotteria') {
+            const numbers = [];
+            while(numbers.length < 6) {
+                const n = random(1, 90);
+                if (!numbers.includes(n)) numbers.push(n);
+            }
+            numbers.sort((a, b) => a - b);
+            
+            const response = `
+╔═══════════════════════╗
+║  🎰 *LOTTERIA*        ║
+╚═══════════════════════╝
+
+🔢 *Numeri estratti:*
+
+╭─────────────────╮
+│  ${numbers.map(n => n.toString().padStart(2, '0')).join('  │  ')}  │
+╰─────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━
+🍀 *Buona fortuna!*
+✨ In bocca al lupo!`;
+            
+            await msg.reply(response);
+        }
+
+        // ═══════════════════════════════════════
+        // 🃏 CASINO & CARTE
+        // ═══════════════════════════════════════
+
+        // ========== BLACKJACK ==========
         else if (command === 'blackjack') {
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            const deck = [];
-            const valori = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-            const semi = ['♠️','♥️','♣️','♦️'];
-            valori.forEach(v => semi.forEach(s => deck.push(v+s)));
-            const pesca = () => deck.splice(Math.floor(Math.random() * deck.length), 1)[0];
-            const calcola = (carte) => {
-                let tot = 0, assi = 0;
-                carte.forEach(c => {
-                    const v = c.slice(0, -2);
-                    if (v === 'A') { tot += 11; assi++; }
-                    else if (['J','Q','K'].includes(v)) tot += 10;
-                    else tot += parseInt(v);
-                });
-                while (tot > 21 && assi > 0) { tot -= 10; assi--; }
-                return tot;
+            const cards = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+            const suits = ['♠️', '♥️', '♦️', '♣️'];
+            
+            const getCard = () => `${choice(cards)}${choice(suits)}`;
+            const getValue = (card) => {
+                const val = card.slice(0, -2);
+                if (val === 'A') return 11;
+                if (['J', 'Q', 'K'].includes(val)) return 10;
+                return parseInt(val);
             };
-            const player = [pesca(), pesca()];
-            const dealer = [pesca()];
-            gameStates[chatId].blackjack = { player, dealer, deck, calcola };
-            saveData();
-            await msg.reply(
-                `🃏 *BLACKJACK*\n\n` +
-                `🎴 Le tue carte: ${player.join(' ')} = *${calcola(player)}*\n` +
-                `🎴 Carta dealer: ${dealer[0]}\n\n` +
-                `Scrivi *hit* per un'altra carta o *stand* per fermarti`
-            );
-        }
-
-        else if (text === 'hit' || text === 'stand') {
-            const chatId = msg.from;
-            if (!gameStates[chatId]?.blackjack) return msg.reply('⚠️ Nessuna partita attiva! Usa .blackjack per iniziare.');
-            const game = gameStates[chatId].blackjack;
-            if (text === 'hit') {
-                const deck = [];
-                const valori = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-                const semi = ['♠️','♥️','♣️','♦️'];
-                valori.forEach(v => semi.forEach(s => deck.push(v+s)));
-                const pesca = () => deck.splice(Math.floor(Math.random() * deck.length), 1)[0];
-                game.player.push(pesca());
-                const tot = game.calcola(game.player);
-                if (tot > 21) {
-                    await msg.reply(`🃏 Le tue carte: ${game.player.join(' ')} = *${tot}*\n\n💥 *SBALLATO!* Hai perso!`);
-                    delete gameStates[chatId].blackjack;
-                } else {
-                    await msg.reply(`🃏 Le tue carte: ${game.player.join(' ')} = *${tot}*\n\nScrivi *hit* o *stand*`);
-                }
+            
+            const playerCards = [getCard(), getCard()];
+            const dealerCards = [getCard(), getCard()];
+            
+            let playerValue = playerCards.reduce((sum, c) => sum + getValue(c), 0);
+            let dealerValue = dealerCards.reduce((sum, c) => sum + getValue(c), 0);
+            
+            // Gestione Assi
+            if (playerValue > 21 && playerCards.some(c => c.startsWith('A'))) playerValue -= 10;
+            if (dealerValue > 21 && dealerCards.some(c => c.startsWith('A'))) dealerValue -= 10;
+            
+            let result = '';
+            let emoji = '';
+            
+            if (playerValue > 21) {
+                result = 'HAI SBALLATO!';
+                emoji = '💥';
+            } else if (dealerValue > 21) {
+                result = 'DEALER SBALLATO! HAI VINTO!';
+                emoji = '🎉';
+            } else if (playerValue === 21 && playerCards.length === 2) {
+                result = 'BLACKJACK! HAI VINTO!';
+                emoji = '🎰';
+            } else if (dealerValue === 21 && dealerCards.length === 2) {
+                result = 'Dealer fa Blackjack!';
+                emoji = '😢';
+            } else if (playerValue > dealerValue) {
+                result = 'HAI VINTO!';
+                emoji = '🎉';
+            } else if (playerValue < dealerValue) {
+                result = 'Hai perso';
+                emoji = '😢';
             } else {
-                while (game.calcola(game.dealer) < 17) {
-                    const deck = [];
-                    const valori = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-                    const semi = ['♠️','♥️','♣️','♦️'];
-                    valori.forEach(v => semi.forEach(s => deck.push(v+s)));
-                    const pesca = () => deck.splice(Math.floor(Math.random() * deck.length), 1)[0];
-                    game.dealer.push(pesca());
-                }
-                const pTot = game.calcola(game.player);
-                const dTot = game.calcola(game.dealer);
-                let result = `🃏 *RISULTATO*\n\n👤 Tu: ${game.player.join(' ')} = *${pTot}*\n🤖 Dealer: ${game.dealer.join(' ')} = *${dTot}*\n\n`;
-                if (dTot > 21 || pTot > dTot) result += '🎉 HAI VINTO!';
-                else if (pTot === dTot) result += '🤝 PAREGGIO!';
-                else result += '😢 HAI PERSO!';
-                await msg.reply(result);
-                delete gameStates[chatId].blackjack;
+                result = 'PAREGGIO!';
+                emoji = '🤝';
             }
-            saveData();
+            
+            const response = `
+╔═══════════════════════╗
+║   🃏 *BLACKJACK*      ║
+╚═══════════════════════╝
+
+👤 *Le tue carte:*
+${playerCards.join(' ')}
+🎯 Punteggio: *${playerValue}*
+
+🎩 *Dealer:*
+${dealerCards.join(' ')}
+🎯 Punteggio: *${dealerValue}*
+
+━━━━━━━━━━━━━━━━━━━━━
+${emoji} *${result}*`;
+            
+            await msg.reply(response);
         }
 
+        // ========== ROULETTE ==========
         else if (command === 'roulette') {
-            if (!args[0]) return msg.reply('⚠️ Usa: .roulette rosso/nero/verde oppure .roulette [numero 0-36]');
-            const numero = Math.floor(Math.random() * 37);
-            let colore = 'verde';
-            if (numero !== 0) {
-                const rossi = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
-                colore = rossi.includes(numero) ? 'rosso' : 'nero';
+            const bet = args[0]?.toLowerCase();
+            const number = random(0, 36);
+            const isRed = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36].includes(number);
+            const color = number === 0 ? 'verde' : (isRed ? 'rosso' : 'nero');
+            const colorEmoji = number === 0 ? '💚' : (isRed ? '🔴' : '⚫');
+            
+            if (!bet) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Scommetti su:\n' +
+                    '• `rosso` o `nero`\n' +
+                    '• numero (0-36)\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.roulette rosso`\n' +
+                    '• `.roulette 17`\n' +
+                    '• `.roulette nero`'
+                );
             }
-            const scommessa = args[0].toLowerCase();
-            let vincita = false;
-            if (['rosso', 'nero', 'verde'].includes(scommessa)) {
-                vincita = scommessa === colore;
-            } else if (!isNaN(scommessa)) {
-                vincita = parseInt(scommessa) === numero;
+            
+            let result = '';
+            let prize = '';
+            let won = false;
+            
+            if (bet === 'rosso' && color === 'rosso') {
+                result = 'HAI VINTO!';
+                prize = '💰 Vincita: x2';
+                won = true;
+            } else if (bet === 'nero' && color === 'nero') {
+                result = 'HAI VINTO!';
+                prize = '💰 Vincita: x2';
+                won = true;
+            } else if (bet === 'verde' && color === 'verde') {
+                result = 'VERDE! JACKPOT!';
+                prize = '💚 Vincita: x36';
+                won = true;
+            } else if (bet === number.toString()) {
+                result = 'NUMERO ESATTO! JACKPOT!';
+                prize = '🎰 Vincita: x36';
+                won = true;
+            } else {
+                result = 'Hai perso';
+                prize = '💸 Riprova!';
             }
-            await msg.reply(
-                `🎡 *ROULETTE*\n\n` +
-                `Numero: *${numero}*\n` +
-                `Colore: *${colore}*\n\n` +
-                `${vincita ? '🎉 HAI VINTO!' : '😢 HAI PERSO!'}`
-            );
+            
+            const response = `
+╔═══════════════════════╗
+║   🎡 *ROULETTE*       ║
+╚═══════════════════════╝
+
+🔮 *Numero uscito:*
+    ${colorEmoji} *${number}* (${color})
+
+💰 *Scommessa:* ${bet}
+
+━━━━━━━━━━━━━━━━━━━━━
+${won ? '🎉' : '😢'} *${result}*
+${prize}`;
+            
+            await msg.reply(response);
         }
 
+        // ========== POKER ==========
+        else if (command === 'poker') {
+            const suits = ['♠️', '♥️', '♦️', '♣️'];
+            const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+            const hand = [];
+            
+            for (let i = 0; i < 5; i++) {
+                hand.push(`${choice(values)}${choice(suits)}`);
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║   🃏 *POKER HAND*     ║
+╚═══════════════════════╝
+
+🎴 *La tua mano:*
+
+╭──────────────────╮
+│ ${hand.join('  ')} │
+╰──────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━
+🎰 Buona fortuna!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== BINGO ==========
+        else if (command === 'bingo') {
+            const numbers = [];
+            while(numbers.length < 15) {
+                const n = random(1, 75);
+                if (!numbers.includes(n)) numbers.push(n);
+            }
+            numbers.sort((a, b) => a - b);
+            
+            const card = `
+┌────┬────┬────┬────┬────┐
+│ B  │ I  │ N  │ G  │ O  │
+├────┼────┼────┼────┼────┤
+│ ${numbers[0].toString().padStart(2)} │ ${numbers[3].toString().padStart(2)} │ ${numbers[6].toString().padStart(2)} │ ${numbers[9].toString().padStart(2)} │ ${numbers[12].toString().padStart(2)} │
+├────┼────┼────┼────┼────┤
+│ ${numbers[1].toString().padStart(2)} │ ${numbers[4].toString().padStart(2)} │ ⭐ │ ${numbers[10].toString().padStart(2)} │ ${numbers[13].toString().padStart(2)} │
+├────┼────┼────┼────┼────┤
+│ ${numbers[2].toString().padStart(2)} │ ${numbers[5].toString().padStart(2)} │ ${numbers[7].toString().padStart(2)} │ ${numbers[11].toString().padStart(2)} │ ${numbers[14].toString().padStart(2)} │
+└────┴────┴────┴────┴────┘`;
+            
+            const response = `
+╔═══════════════════════╗
+║   🎰 *BINGO CARD*     ║
+╚═══════════════════════╝
+
+${card}
+
+━━━━━━━━━━━━━━━━━━━━━
+✨ Buona fortuna!
+🎯 BINGO!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SCOMMESSA ==========
+        else if (command === 'scommessa') {
+            const amount = parseInt(args[0]) || 100;
+            const win = random(0, 1) === 1;
+            const multiplier = (random(15, 30) / 10).toFixed(1);
+            const winAmount = Math.floor(amount * multiplier);
+            
+            let response = '';
+            
+            if (win) {
+                response = `
+╔═══════════════════════╗
+║   💰 *SCOMMESSA*      ║
+╚═══════════════════════╝
+
+✅ *HAI VINTO!*
+
+💵 Puntata: *${amount}* punti
+📈 Moltiplicatore: *x${multiplier}*
+🎉 Vincita: *${winAmount}* punti
+
+━━━━━━━━━━━━━━━━━━━━━
+💰 Profitto: *+${winAmount - amount}* punti`;
+            } else {
+                response = `
+╔═══════════════════════╗
+║   💸 *SCOMMESSA*      ║
+╚═══════════════════════╝
+
+❌ *Hai perso!*
+
+💵 Puntata: *${amount}* punti
+📉 Persi: *${amount}* punti
+
+━━━━━━━━━━━━━━━━━━━━━
+😢 Riprova! La fortuna girerà!`;
+            }
+            
+            await msg.reply(response);
+        }
+
+        // ═══════════════════════════════════════
+        // 🧠 GIOCHI DI INTELLETTO
+        // ═══════════════════════════════════════
+
+        // ========== QUIZ ==========
         else if (command === 'quiz') {
-            const quiz = [
-                { q: 'Qual è la capitale dell\'Italia?', a: ['Roma', 'Milano', 'Napoli'], c: 0 },
-                { q: 'Quanti continenti ci sono?', a: ['5', '6', '7'], c: 2 },
-                { q: 'Chi ha dipinto la Gioconda?', a: ['Michelangelo', 'Leonardo da Vinci', 'Raffaello'], c: 1 },
-                { q: 'Quale pianeta è più vicino al Sole?', a: ['Venere', 'Marte', 'Mercurio'], c: 2 },
-                { q: 'In che anno è finita la seconda guerra mondiale?', a: ['1943', '1945', '1947'], c: 1 }
+            const quizzes = [
+                { q: 'Qual è la capitale della Francia?', a: ['Parigi', 'Londra', 'Berlino', 'Madrid'], c: 0 },
+                { q: 'Quanti continenti ci sono?', a: ['5', '6', '7', '8'], c: 2 },
+                { q: 'Chi ha dipinto la Gioconda?', a: ['Michelangelo', 'Leonardo da Vinci', 'Raffaello', 'Donatello'], c: 1 },
+                { q: 'Quale pianeta è il più vicino al Sole?', a: ['Venere', 'Marte', 'Mercurio', 'Terra'], c: 2 },
+                { q: 'In che anno è finita la Seconda Guerra Mondiale?', a: ['1943', '1944', '1945', '1946'], c: 2 },
+                { q: 'Qual è l\'oceano più grande?', a: ['Atlantico', 'Pacifico', 'Indiano', 'Artico'], c: 1 },
+                { q: 'Quante corde ha una chitarra classica?', a: ['4', '5', '6', '7'], c: 2 },
+                { q: 'Chi ha scritto "La Divina Commedia"?', a: ['Petrarca', 'Dante', 'Boccaccio', 'Manzoni'], c: 1 }
             ];
-            const q = quiz[Math.floor(Math.random() * quiz.length)];
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].quiz = q;
-            saveData();
-            await msg.reply(
-                `❓ *QUIZ*\n\n${q.q}\n\n` +
-                q.a.map((opt, i) => `${i+1}. ${opt}`).join('\n') +
-                `\n\nRispondi con il numero (1, 2 o 3)`
-            );
+            
+            const quiz = choice(quizzes);
+            const options = quiz.a.map((opt, i) => `${i + 1}. ${opt}`).join('\n');
+            
+            const response = `
+╔═══════════════════════╗
+║     🧠 *QUIZ*         ║
+╚═══════════════════════╝
+
+❓ *Domanda:*
+${quiz.q}
+
+📋 *Opzioni:*
+${options}
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ *Risposta:* ||${quiz.a[quiz.c]}||`;
+            
+            await msg.reply(response);
         }
 
+        // ========== TRIVIA ==========
         else if (command === 'trivia') {
-            const trivia = [
-                'Il miele non scade mai! 🍯',
-                'Le banane sono bacche, mentre le fragole no! 🍌',
-                'Un polpo ha tre cuori! 🐙',
-                'Le impronte digitali dei koala sono quasi identiche a quelle umane! 🐨',
-                'Un fulmine è 5 volte più caldo della superficie del sole! ⚡'
+            const facts = [
+                { fact: 'Il miele non scade mai!', emoji: '🍯' },
+                { fact: 'Un polpo ha 3 cuori!', emoji: '🐙' },
+                { fact: 'La Torre Eiffel può crescere di 15cm in estate!', emoji: '🗼' },
+                { fact: 'Le banane sono bacche, le fragole no!', emoji: '🍌' },
+                { fact: 'Il cuore di un gambero è nella testa!', emoji: '🦐' },
+                { fact: 'I pinguini hanno le ginocchia!', emoji: '🐧' },
+                { fact: 'La luce del sole impiega 8 minuti per arrivare sulla Terra!', emoji: '☀️' },
+                { fact: 'Gli squali sono più vecchi degli alberi!', emoji: '🦈' },
+                { fact: 'Le impronte digitali dei koala sono quasi identiche a quelle umane!', emoji: '🐨' },
+                { fact: 'Un fulmine è più caldo della superficie del sole!', emoji: '⚡' }
             ];
-            await msg.reply(`💡 *TRIVIA*\n\n${trivia[Math.floor(Math.random() * trivia.length)]}`);
+            
+            const trivia = choice(facts);
+            
+            const response = `
+╔═══════════════════════╗
+║    💡 *TRIVIA*        ║
+╚═══════════════════════╝
+
+${trivia.emoji} *Lo sapevi?*
+
+${trivia.fact}
+
+━━━━━━━━━━━━━━━━━━━━━
+🤓 Cultura generale!`;
+            
+            await msg.reply(response);
         }
 
+        // ========== MATH ==========
         else if (command === 'math') {
-            const n1 = Math.floor(Math.random() * 20) + 1;
-            const n2 = Math.floor(Math.random() * 20) + 1;
-            const ops = ['+', '-', '*'];
-            const op = ops[Math.floor(Math.random() * ops.length)];
-            let result;
-            if (op === '+') result = n1 + n2;
-            else if (op === '-') result = n1 - n2;
-            else result = n1 * n2;
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].math = { domanda: `${n1} ${op} ${n2}`, risposta: result };
-            saveData();
-            await msg.reply(`🧮 *MATEMATICA VELOCE*\n\nQuanto fa?\n\n*${n1} ${op} ${n2} = ?*\n\nRispondi con il numero!`);
+            const num1 = random(1, 20);
+            const num2 = random(1, 20);
+            const operations = [
+                { op: '+', symbol: '+', calc: (a, b) => a + b },
+                { op: '-', symbol: '-', calc: (a, b) => a - b },
+                { op: '*', symbol: '×', calc: (a, b) => a * b }
+            ];
+            const operation = choice(operations);
+            const result = operation.calc(num1, num2);
+            
+            const response = `
+╔═══════════════════════╗
+║   🔢 *MATEMATICA*     ║
+╚═══════════════════════╝
+
+❓ *Calcola:*
+
+     ${num1} ${operation.symbol} ${num2} = ?
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ *Risposta:* ||${result}||`;
+            
+            await msg.reply(response);
         }
 
-        else if (command === 'memory') {
-            const simboli = ['🍎', '🍌', '🍒', '🍇', '🍊', '🍋'];
-            const sequenza = Array(5).fill(0).map(() => simboli[Math.floor(Math.random() * simboli.length)]);
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].memory = { sequenza: sequenza.join(''), attesa: true };
-            saveData();
-            await msg.reply(`🧠 *GIOCO MEMORIA*\n\nMemorizza questa sequenza:\n\n${sequenza.join(' ')}\n\nRiscrivila tra 5 secondi!`);
-            setTimeout(() => {
-                if (gameStates[chatId]?.memory?.attesa) {
-                    gameStates[chatId].memory.attesa = false;
-                    saveData();
-                }
-            }, 5000);
+        // ========== ENIGMA ==========
+        else if (command === 'enigma') {
+            const riddles = [
+                { q: 'Ho le chiavi ma nessuna serratura. Ho spazio ma nessuna stanza. Puoi entrare ma non uscire. Cosa sono?', a: 'Una tastiera' },
+                { q: 'Più ne togli, più divento grande. Cosa sono?', a: 'Un buco' },
+                { q: 'Cosa ha un collo ma non ha testa?', a: 'Una bottiglia' },
+                { q: 'Vado su e giù ma non mi muovo mai. Cosa sono?', a: 'Le scale' },
+                { q: 'Ho città ma nessuna casa, foreste ma nessun albero, acqua ma nessun pesce. Cosa sono?', a: 'Una mappa' },
+                { q: 'Sono sempre affamato, devo sempre essere nutrito. Il dito che tocco, presto diventerà rosso. Cosa sono?', a: 'Il fuoco' },
+                { q: 'Puoi vedermi di notte nella luminosità. Sono una luce che non hai mai acceso. Cosa sono?', a: 'La luna' }
+            ];
+            
+            const riddle = choice(riddles);
+            
+            const response = `
+╔═══════════════════════╗
+║    🤔 *ENIGMA*        ║
+╚═══════════════════════╝
+
+🎭 *Indovina:*
+
+${riddle.q}
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 *Risposta:* ||${riddle.a}||`;
+            
+            await msg.reply(response);
         }
 
-        else if (command === 'tictactoe') {
-            if (!isGroup) return msg.reply('⚠️ Questo gioco funziona solo nei gruppi!');
-            const mentioned = await msg.getMentions();
-            if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente per sfidarlo!');
-            const chatId = chat.id._serialized;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].tictactoe = {
-                board: Array(9).fill('⬜'),
-                player1: msg.author || msg.from,
-                player2: mentioned[0].id._serialized,
-                turn: msg.author || msg.from
-            };
-            saveData();
-            await msg.reply(
-                `⭕❌ *TRIS*\n\n` +
-                `Giocatore 1: @${(msg.author || msg.from).split('@')[0]} (⭕)\n` +
-                `Giocatore 2: @${mentioned[0].id._serialized.split('@')[0]} (❌)\n\n` +
-                `${gameStates[chatId].tictactoe.board.slice(0,3).join('')}\n` +
-                `${gameStates[chatId].tictactoe.board.slice(3,6).join('')}\n` +
-                `${gameStates[chatId].tictactoe.board.slice(6,9).join('')}\n\n` +
-                `Usa .t [1-9] per giocare!`,
-                undefined,
-                { mentions: [msg.author || msg.from, mentioned[0].id._serialized] }
-            );
+        // ========== PAROLA ==========
+        else if (command === 'parola') {
+            const words = ['AMORE', 'CUORE', 'STELLA', 'FIORE', 'MARE', 'SOLE', 'LUNA', 'VENTO', 'FUOCO', 'TERRA'];
+            const word = choice(words);
+            const scrambled = word.split('').sort(() => Math.random() - 0.5).join('');
+            
+            const response = `
+╔═══════════════════════╗
+║   🔤 *ANAGRAMMA*      ║
+╚═══════════════════════╝
+
+🔀 *Parola mescolata:*
+
+     *${scrambled}*
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ *Soluzione:* ||${word}||`;
+            
+            await msg.reply(response);
         }
 
-        else if (command === 'impiccato') {
-            const parole = ['PROGRAMMAZIONE', 'JAVASCRIPT', 'WHATSAPP', 'COMPUTER', 'TELEFONO', 'INTERNET'];
-            const parola = parole[Math.floor(Math.random() * parole.length)];
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].impiccato = {
-                parola,
-                scoperte: Array(parola.length).fill('_'),
-                errori: 0,
-                lettereUsate: []
-            };
-            saveData();
-            await msg.reply(
-                `🎯 *IMPICCATO*\n\n` +
-                `Parola: ${gameStates[chatId].impiccato.scoperte.join(' ')}\n` +
-                `Errori: ${gameStates[chatId].impiccato.errori}/6\n\n` +
-                `Indovina una lettera! Usa .l [lettera]`
-            );
-        }
+        // ═══════════════════════════════════════
+        // 💘 AMORE & ROMANTICO
+        // ═══════════════════════════════════════
 
-        else if (command === 'l' && args[0]) {
-            const chatId = msg.from;
-            if (!gameStates[chatId]?.impiccato) return msg.reply('⚠️ Nessuna partita attiva! Usa .impiccato');
-            const game = gameStates[chatId].impiccato;
-            const lettera = args[0].toUpperCase();
-            if (game.lettereUsate.includes(lettera)) return msg.reply('⚠️ Lettera già usata!');
-            game.lettereUsate.push(lettera);
-            if (game.parola.includes(lettera)) {
-                for (let i = 0; i < game.parola.length; i++) {
-                    if (game.parola[i] === lettera) game.scoperte[i] = lettera;
-                }
-                if (!game.scoperte.includes('_')) {
-                    await msg.reply(`🎉 *HAI VINTO!*\n\nLa parola era: *${game.parola}*`);
-                    delete gameStates[chatId].impiccato;
-                } else {
-                    await msg.reply(
-                        `✅ Lettera corretta!\n\n` +
-                        `Parola: ${game.scoperte.join(' ')}\n` +
-                        `Errori: ${game.errori}/6`
-                    );
-                }
-            } else {
-                game.errori++;
-                if (game.errori >= 6) {
-                    await msg.reply(`💀 *HAI PERSO!*\n\nLa parola era: *${game.parola}*`);
-                    delete gameStates[chatId].impiccato;
-                } else {
-                    await msg.reply(
-                        `❌ Lettera sbagliata!\n\n` +
-                        `Parola: ${game.scoperte.join(' ')}\n` +
-                        `Errori: ${game.errori}/6`
-                    );
-                }
+        // ========== SHIP ==========
+        else if (command === 'ship') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length < 2) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona 2 persone per vedere la loro compatibilità!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.ship @persona1 @persona2`'
+                );
             }
-            saveData();
-        }
-
-        else if (command === 'indovinachi') {
-            const personaggi = ['Cristiano Ronaldo', 'Einstein', 'Leonardo da Vinci', 'Steve Jobs', 'Michael Jackson'];
-            const personaggio = personaggi[Math.floor(Math.random() * personaggi.length)];
-            const chatId = msg.from;
-            if (!gameStates[chatId]) gameStates[chatId] = {};
-            gameStates[chatId].indovinachi = { personaggio, tentativi: 0 };
-            saveData();
-            await msg.reply(
-                `🎭 *INDOVINA CHI*\n\n` +
-                `Ho pensato a un personaggio famoso!\n` +
-                `Hai 5 tentativi per indovinare.\n\n` +
-                `Usa .chi [nome] per rispondere`
-            );
-        }
-
-        else if (command === 'chi' && args.length) {
-            const chatId = msg.from;
-            if (!gameStates[chatId]?.indovinachi) return msg.reply('⚠️ Nessuna partita attiva! Usa .indovinachi');
-            const game = gameStates[chatId].indovinachi;
-            game.tentativi++;
-            const risposta = msg.body.slice(5).trim().toLowerCase();
-            if (risposta === game.personaggio.toLowerCase()) {
-                await msg.reply(`🎉 *ESATTO!*\n\nIl personaggio era: *${game.personaggio}*\nTentativi: ${game.tentativi}`);
-                delete gameStates[chatId].indovinachi;
-            } else if (game.tentativi >= 5) {
-                await msg.reply(`😢 *HAI PERSO!*\n\nIl personaggio era: *${game.personaggio}*`);
-                delete gameStates[chatId].indovinachi;
+            
+            const user1 = mentions[0].pushname || mentions[0].verifiedName || 'User1';
+            const user2 = mentions[1].pushname || mentions[1].verifiedName || 'User2';
+            const percent = percentage();
+            
+            let emoji = '';
+            let message = '';
+            
+            if (percent >= 90) {
+                emoji = '💕💕💕';
+                message = 'Anime gemelle! Matrimonio in vista! 💒';
+            } else if (percent >= 70) {
+                emoji = '❤️❤️';
+                message = 'Ottima compatibilità! Coppia perfetta! 🥰';
+            } else if (percent >= 50) {
+                emoji = '💖';
+                message = 'Buona chimica! Potrebbe funzionare! 😊';
+            } else if (percent >= 30) {
+                emoji = '💔';
+                message = 'Compatibilità bassa... Forse solo amici? 🤷';
             } else {
-                await msg.reply(`❌ Sbagliato! Tentativi rimasti: ${5 - game.tentativi}`);
+                emoji = '💀';
+                message = 'Disastro totale! Meglio evitare! 😱';
             }
-            saveData();
+            
+            const hearts = '❤️'.repeat(Math.floor(percent / 10));
+            const empty = '🤍'.repeat(10 - Math.floor(percent / 10));
+            
+            const response = `
+╔═══════════════════════╗
+║   💘 *SHIP METER*     ║
+╚═══════════════════════╝
+
+👤 ${user1}
+     💕
+👤 ${user2}
+
+━━━━━━━━━━━━━━━━━━━━━
+${emoji} *${percent}%* ${emoji}
+
+[${hearts}${empty}]
+
+${message}`;
+            
+            await msg.reply(response);
         }
+
+        // ========== CREA COPPIA ==========
+        else if (command === 'creacoppia') {
+            if (!isGroup) {
+                return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+            }
+            
+            const participants = chat.participants.map(p => p.id._serialized);
+            
+            if (participants.length < 2) {
+                return msg.reply('❌ Servono almeno 2 persone nel gruppo!');
+            }
+            
+            const person1 = choice(participants);
+            let person2 = choice(participants);
+            while (person2 === person1 && participants.length > 1) {
+                person2 = choice(participants);
+            }
+            
+            const contact1 = await client.getContactById(person1);
+            const contact2 = await client.getContactById(person2);
+            const name1 = contact1.pushname || contact1.verifiedName || 'User1';
+            const name2 = contact2.pushname || contact2.verifiedName || 'User2';
+            
+            const percent = percentage();
+            
+            let verdict = '';
+            if (percent >= 70) verdict = '🎉 Coppia perfetta!';
+            else if (percent >= 40) verdict = '😊 Potrebbe funzionare!';
+            else verdict = '😅 Mmm... difficile!';
+            
+            const response = `
+╔═══════════════════════╗
+║  💑 *COPPIA RANDOM*   ║
+╚═══════════════════════╝
+
+💘 *Cupido ha scelto:*
+
+👤 @${person1.split('@')[0]}
+     💕
+👤 @${person2.split('@')[0]}
+
+━━━━━━━━━━━━━━━━━━━━━
+💘 Compatibilità: *${percent}%*
+
+${verdict}`;
+            
+            await chat.sendMessage(response, {
+                mentions: [contact1, contact2]
+            });
+        }
+
+        // ========== AMORE ==========
+        else if (command === 'amore') {
+            const quotes = [
+                { text: 'L\'amore è come il vento, non puoi vederlo ma puoi sentirlo.', emoji: '💕' },
+                { text: 'Sei la ragione per cui sorrido ogni giorno.', emoji: '❤️' },
+                { text: 'In un mare di persone, i miei occhi cercheranno sempre te.', emoji: '💖' },
+                { text: 'Ti amo non solo per quello che sei, ma per quello che sono io quando sono con te.', emoji: '🌹' },
+                { text: 'Ogni momento con te è un momento che vorrei durasse per sempre.', emoji: '💝' },
+                { text: 'Il mio cuore batte il tuo nome.', emoji: '💗' },
+                { text: 'Sei il mio per sempre e sempre.', emoji: '💓' },
+                { text: 'Con te, ogni giorno è San Valentino.', emoji: '💞' }
+            ];
+            
+            const quote = choice(quotes);
+            
+            const response = `
+╔═══════════════════════╗
+║  💕 *CITAZIONE AMORE* ║
+╚═══════════════════════╝
+
+${quote.emoji} "${quote.text}"
+
+━━━━━━━━━━━━━━━━━━━━━
+💘 Con amore...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== BACIO ==========
+        else if (command === 'bacia') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.bacia @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const kisses = [
+                { text: `${sender} manda un bacio appassionato a ${target}!`, emoji: '💋😘' },
+                { text: `${sender} bacia dolcemente ${target} sulla guancia!`, emoji: '😘💕' },
+                { text: `${sender} e ${target} si baciano sotto le stelle!`, emoji: '💏✨' },
+                { text: `${sender} ruba un bacio a ${target}!`, emoji: '😚💖' },
+                { text: `Un bacio magico da ${sender} per ${target}!`, emoji: '💋🌹' }
+            ];
+            
+            const kiss = choice(kisses);
+            
+            const response = `
+╔═══════════════════════╗
+║    💋 *BACIO*         ║
+╚═══════════════════════╝
+
+${kiss.emoji}
+
+${kiss.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+💕 *Awww...*`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== ABBRACCIO ==========
+        else if (command === 'abbraccio') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.abbraccio @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const hugs = [
+                { text: `${sender} abbraccia forte ${target}!`, emoji: '🤗💕' },
+                { text: `${sender} stringe ${target} in un abbraccio caloroso!`, emoji: '🫂❤️' },
+                { text: `${sender} abbraccia teneramente ${target}!`, emoji: '💑🥰' },
+                { text: `Un super abbraccio da ${sender} per ${target}!`, emoji: '🤗💖' },
+                { text: `${sender} e ${target} non vogliono più lasciarsi!`, emoji: '🫂💞' }
+            ];
+            
+            const hug = choice(hugs);
+            
+            const response = `
+╔═══════════════════════╗
+║   🤗 *ABBRACCIO*      ║
+╚═══════════════════════╝
+
+${hug.emoji}
+
+${hug.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+💝 *Che dolcezza!*`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== APPUNTAMENTO ==========
+        else if (command === 'appuntamento') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.appuntamento @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const dates = [
+                { text: `${sender} chiede a ${target} di uscire!`, detail: '"Ti va di cenare con me stasera?"', emoji: '💑🍷🌹' },
+                { text: `${sender} invita ${target} al cinema!`, detail: '"Ho due biglietti... uno è per te!"', emoji: '🎬🍿💕' },
+                { text: `${sender} vuole guardare il tramonto con ${target}!`, detail: '"Il panorama sarà più bello con te accanto."', emoji: '🌅🌄💖' },
+                { text: `${sender} chiede a ${target} un caffè!`, detail: '"Un caffè insieme? Offro io! 😊"', emoji: '☕💝' },
+                { text: `${sender} propone una passeggiata romantica a ${target}!`, detail: '"Passeggiamo sotto le stelle?"', emoji: '🚶🌙✨' }
+            ];
+            
+            const date = choice(dates);
+            
+            const response = `
+╔═══════════════════════╗
+║  💑 *APPUNTAMENTO*    ║
+╚═══════════════════════╝
+
+${date.emoji}
+
+${date.text}
+
+${date.detail}
+
+━━━━━━━━━━━━━━━━━━━━━
+💘 *Romantico!*`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== COMPLIMENTO ==========
+        else if (command === 'complimento') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.complimento @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            
+            const compliments = [
+                { text: `${target}, hai un sorriso che illumina la giornata!`, emoji: '💕✨' },
+                { text: `${target}, sei incredibilmente speciale!`, emoji: '🌹💖' },
+                { text: `${target}, la tua presenza rende tutto migliore!`, emoji: '💫❤️' },
+                { text: `${target}, hai un fascino irresistibile!`, emoji: '✨😍' },
+                { text: `${target}, sei bellissimo/a dentro e fuori!`, emoji: '💝🥰' },
+                { text: `${target}, sei unico/a e meraviglioso/a!`, emoji: '🌟💞' },
+                { text: `${target}, il mondo è più bello con te!`, emoji: '💗🌈' }
+            ];
+            
+            const compliment = choice(compliments);
+            
+            const response = `
+╔═══════════════════════╗
+║  💖 *COMPLIMENTO*     ║
+╚═══════════════════════╝
+
+${compliment.emoji}
+
+${compliment.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🥰 *Che dolcezza!*`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== LOVE TEST ==========
+        else if (command === 'lovetest') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.lovetest @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Tu';
+            
+            const love = percentage();
+            const passion = percentage();
+            const chemistry = percentage();
+            const future = percentage();
+            
+            const avg = Math.floor((love + passion + chemistry + future) / 4);
+            
+            let verdict = '';
+            if (avg >= 80) verdict = '💕 ANIME GEMELLE! Siete fatti l\'uno per l\'altra! 💕';
+            else if (avg >= 60) verdict = '❤️ Grande amore! Avete un futuro insieme! ❤️';
+            else if (avg >= 40) verdict = '💖 Buona intesa! Continuate così! 💖';
+            else verdict = '💔 Serve più impegno... o forse solo amici? 💔';
+            
+            const response = `
+╔═══════════════════════╗
+║   💘 *LOVE TEST*      ║
+╚═══════════════════════╝
+
+👤 ${sender}
+     💕
+👤 ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+💖 Amore: ${love}%
+🔥 Passione: ${passion}%
+⚡ Chimica: ${chemistry}%
+🔮 Futuro: ${future}%
+━━━━━━━━━━━━━━━━━━━━━
+📊 Media: *${avg}%*
+
+${verdict}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== CUORE ==========
+        else if (command === 'cuore') {
+            const heart = `
+╔═══════════════════════╗
+║     💖 *CUORE*        ║
+╚═══════════════════════╝
+
+    ♥️♥️         ♥️♥️
+  ♥️    ♥️     ♥️    ♥️
+♥️        ♥️ ♥️        ♥️
+♥️                      ♥️
+  ♥️                  ♥️
+    ♥️              ♥️
+      ♥️          ♥️
+        ♥️      ♥️
+          ♥️  ♥️
+            ♥️
+
+━━━━━━━━━━━━━━━━━━━━━
+💕 Con tutto il cuore!`;
+            
+            await msg.reply(heart);
+        }
+
+        // ========== ROSA ROSSA ==========
+        else if (command === 'rosarossa') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.rosarossa @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const rose = `
+╔═══════════════════════╗
+║   🌹 *ROSA ROSSA*     ║
+╚═══════════════════════╝
+
+         🌹
+        /|\\
+       / | \\
+      /  |  \\
+         |
+         |
+         |
+
+━━━━━━━━━━━━━━━━━━━━━
+💐 ${sender} regala una rosa a ${target}
+
+💕 "Per te, con amore..."`;
+            
+            await msg.reply(rose);
+        }
+
+        // ========== POESIA ==========
+        else if (command === 'poesia') {
+            const poems = [
+                `Nel profondo del mio cuore,\nRisiede un eterno ardore,\nChe brucia solo per te,\nAmore mio, eternamente.`,
+                `Sei la stella che brilla,\nNella mia notte tranquilla,\nLa luce che mi guida,\nVerso una vita infinita.`,
+                `Come fiore al mattino,\nChe si apre al suo destino,\nCosì il mio cuore si schiude,\nQuando penso a te che concludi.`,
+                `Tu sei il sogno che non finisce,\nL'amore che sempre fiorisce,\nLa ragione del mio esistere,\nIl mio dolce resistere.`
+            ];
+            
+            const poem = choice(poems);
+            
+            const response = `
+╔═══════════════════════╗
+║   📜 *POESIA D'AMORE* ║
+╚═══════════════════════╝
+
+💕 ${poem}
+
+━━━━━━━━━━━━━━━━━━━━━
+🌹 Con sentimento...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== DEDICA ==========
+        else if (command === 'dedica') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0 || args.length < 2) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno e scrivi una dedica!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.dedica @persona Sei speciale`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            const dedication = args.slice(1).join(' ');
+            
+            const response = `
+╔═══════════════════════╗
+║  💌 *DEDICA SPECIALE* ║
+╚═══════════════════════╝
+
+💕 *Da:* ${sender}
+💖 *Per:* ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+
+"${dedication}"
+
+━━━━━━━━━━━━━━━━━━━━━
+🌹 Con affetto...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== MATRIMONIO ==========
+        else if (command === 'matrimonio') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.matrimonio @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            const acceptance = percentage();
+            
+            let answer = '';
+            if (acceptance >= 70) answer = `${target} ha detto SÌ! 💍✨`;
+            else if (acceptance >= 40) answer = `${target} ci deve pensare... 🤔`;
+            else answer = `${target} ha rifiutato... 💔😢`;
+            
+            const response = `
+╔═══════════════════════╗
+║  💍 *PROPOSTA*        ║
+╚═══════════════════════╝
+
+💑 ${sender} si inginocchia...
+
+"${target}, vuoi sposarmi?"
+
+          💍
+         /|\\
+        / | \\
+
+━━━━━━━━━━━━━━━━━━━━━
+${answer}
+
+${acceptance >= 70 ? '🎊 Evviva gli sposi! 🎊' : acceptance >= 40 ? '⏳ Dai tempo al tempo...' : '💔 Forse un giorno...'}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== LETTERA ==========
+        else if (command === 'lettera') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.lettera @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'Amore mio';
+            const sender = msg._data.notifyName || 'Chi ti ama';
+            
+            const letters = [
+                `Carissimo/a ${target},\n\nOgni giorno che passa mi rendo conto sempre di più di quanto tu sia importante per me. Il tuo sorriso illumina le mie giornate e il tuo amore mi rende la persona più fortunata del mondo.\n\nCon tutto il mio cuore,\n${sender} 💕`,
+                `Mio/a dolce ${target},\n\nCi sono momenti in cui le parole non bastano per esprimere ciò che sento. Tu sei la mia ispirazione, il mio sogno realizzato, la ragione per cui ogni giorno vale la pena di essere vissuto.\n\nPer sempre tuo/a,\n${sender} ❤️`,
+                `A ${target}, con amore,\n\nSei entrato/a nella mia vita come un raggio di sole in una giornata grigia. Da quel momento, tutto ha acquisito un nuovo significato. Grazie per esistere.\n\nSempre,\n${sender} 💖`
+            ];
+            
+            const letter = choice(letters);
+            
+            const response = `
+╔═══════════════════════╗
+║  💌 *LETTERA D'AMORE* ║
+╚═══════════════════════╝
+
+${letter}
+
+━━━━━━━━━━━━━━━━━━━━━
+🌹 Sigillato con un bacio 💋`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SERENATA ==========
+        else if (command === 'serenata') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.serenata @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const response = `
+╔═══════════════════════╗
+║  🎵 *SERENATA*        ║
+╚═══════════════════════╝
+
+🌙 Sotto la tua finestra...
+
+${sender} canta per ${target}:
+
+♪ ♫ ♪ ♫
+
+"🎶 Sei tu la mia stella,
+che brilla la sera,
+l'amore più vero,
+che il cuore spera! 🎶"
+
+━━━━━━━━━━━━━━━━━━━━━
+🎸 Con passione... 💕`;
+            
+            await msg.reply(response);
+        }
+
+        // ═══════════════════════════════════════
+        // 🔥 PICCANTE & SPICY
+        // ═══════════════════════════════════════
+
+        // ========== OBBLIGO ==========
+        else if (command === 'obbligo') {
+            const dares = [
+                { text: 'Manda un vocale sexy di 10 secondi', emoji: '🔥' },
+                { text: 'Descrivi il tuo sogno più proibito', emoji: '😈' },
+                { text: 'Racconta la tua esperienza più audace', emoji: '💋' },
+                { text: 'Manda un selfie con uno sguardo provocante', emoji: '😏' },
+                { text: 'Sussurra qualcosa di piccante', emoji: '🌶️' }
+            ];
+            
+            const dare = choice(dares);
+            
+            const response = `
+╔═══════════════════════╗
+║   🔥 *OBBLIGO OSÉ*    ║
+╚═══════════════════════╝
+
+${dare.emoji}
+
+*${dare.text}*
+
+━━━━━━━━━━━━━━━━━━━━━
+😈 Osi o non osi?`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== VERITÀ ==========
+        else if (command === 'verita') {
+            const truths = [
+                { text: 'Qual è la tua fantasia segreta?', emoji: '😏' },
+                { text: 'Hai mai fatto qualcosa di molto audace?', emoji: '🔥' },
+                { text: 'Qual è il posto più strano dove hai baciato qualcuno?', emoji: '💋' },
+                { text: 'Qual è il tuo più grande desiderio nascosto?', emoji: '🌶️' },
+                { text: 'Hai mai avuto un sogno piccante? Raccontalo!', emoji: '😈' }
+            ];
+            
+            const truth = choice(truths);
+            
+            const response = `
+╔═══════════════════════╗
+║  💬 *VERITÀ PICCANTE* ║
+╚═══════════════════════╝
+
+${truth.emoji}
+
+*${truth.text}*
+
+━━━━━━━━━━━━━━━━━━━━━
+🤐 Confessa!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== OSARE ==========
+        else if (command === 'osare') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.osare @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const challenges = [
+                { text: `${sender} sfida ${target} a mandare un vocale sexy!`, emoji: '🔥😏' },
+                { text: `${sender} osa ${target} a confessare la sua fantasia!`, emoji: '😈💭' },
+                { text: `${sender} sfida ${target} a descrivere il suo tipo ideale!`, emoji: '💋❤️' },
+                { text: `${sender} osa ${target} a rivelare il suo sogno proibito!`, emoji: '🌶️😏' },
+                { text: `${sender} sfida ${target} a fare un complimento audace!`, emoji: '🔥💕' }
+            ];
+            
+            const challenge = choice(challenges);
+            
+            const response = `
+╔═══════════════════════╗
+║  😈 *SFIDA PICCANTE*  ║
+╚═══════════════════════╝
+
+${challenge.emoji}
+
+${challenge.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🎯 Accetti la sfida?`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SPIN ==========
+        else if (command === 'spin') {
+            if (!isGroup) {
+                return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+            }
+            
+            const participants = chat.participants.map(p => p.id._serialized);
+            
+            if (participants.length < 2) {
+                return msg.reply('❌ Servono almeno 2 persone!');
+            }
+            
+            const selected = choice(participants);
+            const contact = await client.getContactById(selected);
+            const name = contact.pushname || contact.verifiedName || 'Qualcuno';
+            
+            const response = `
+╔═══════════════════════╗
+║  🍾 *GIRA BOTTIGLIA*  ║
+╚═══════════════════════╝
+
+       🍾
+      /  \\
+     /    \\
+    /      \\
+   /        \\
+  ----------
+      ⬇️
+
+━━━━━━━━━━━━━━━━━━━━━
+🎯 La bottiglia indica:
+
+👤 *${name}*
+
+━━━━━━━━━━━━━━━━━━━━━
+😏 Cosa succederà?`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== FLIRT ==========
+        else if (command === 'flirt') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.flirt @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            
+            const flirts = [
+                { text: `Hey ${target}, sei così affascinante che il mio cuore ha saltato un battito... 😏`, emoji: '😏💕' },
+                { text: `${target}, devo chiamare i vigili? Perché sei troppo hot! 🔥`, emoji: '🔥😈' },
+                { text: `${target}, ho perso il mio numero... posso avere il tuo? 😘`, emoji: '😘📱' },
+                { text: `${target}, sei un ladro/a? Perché mi hai rubato il cuore! 💋`, emoji: '💋💖' },
+                { text: `${target}, credi nel colpo di fulmine o devo passare di nuovo? ⚡`, emoji: '⚡😍' }
+            ];
+            
+            const flirt = choice(flirts);
+            
+            const response = `
+╔═══════════════════════╗
+║  😏 *FLIRT PICCANTE*  ║
+╚═══════════════════════╝
+
+${flirt.emoji}
+
+${flirt.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Che audacia!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== HOT RATE ==========
+        else if (command === 'hotrate') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.hotrate @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const rating = random(1, 10);
+            
+            let emoji = '';
+            let verdict = '';
+            
+            if (rating >= 9) {
+                emoji = '🔥🔥🔥';
+                verdict = 'INFUOCATO! Impossibile resistere!';
+            } else if (rating >= 7) {
+                emoji = '🔥🔥';
+                verdict = 'Molto hot! Temperatura alta!';
+            } else if (rating >= 5) {
+                emoji = '🔥';
+                verdict = 'Decisamente interessante!';
+            } else {
+                emoji = '😅';
+                verdict = 'Serve più fuoco!';
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║  🔥 *HOT RATE*        ║
+╚═══════════════════════╝
+
+👤 *${target}*
+
+━━━━━━━━━━━━━━━━━━━━━
+${emoji} *${rating}/10* ${emoji}
+
+${verdict}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SEDUZIONE ==========
+        else if (command === 'seduzione') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.seduzione @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            
+            const techniques = [
+                { text: `Guardalo/a negli occhi intensamente e sorridi misteriosamente`, emoji: '👁️💫' },
+                { text: `Sussurra qualcosa al suo orecchio`, emoji: '👂🔥' },
+                { text: `Gioca con i capelli mentre parli con lui/lei`, emoji: '💁‍♀️✨' },
+                { text: `Toccalo/a "accidentalmente" sul braccio`, emoji: '🤚💕' },
+                { text: `Mordicchia leggermente il labbro inferiore`, emoji: '💋😏' }
+            ];
+            
+            const technique = choice(techniques);
+            
+            const response = `
+╔═══════════════════════╗
+║  😈 *SEDUZIONE*       ║
+╚═══════════════════════╝
+
+🎯 *Obiettivo:* ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+${technique.emoji}
+
+*Tecnica:*
+${technique.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Irresistibile!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== WINK ==========
+        else if (command === 'wink') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.wink @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const response = `
+╔═══════════════════════╗
+║  😉 *OCCHIOLINO*      ║
+╚═══════════════════════╝
+
+${sender} fa un occhiolino
+civettoso a ${target}! 😉
+
+━━━━━━━━━━━━━━━━━━━━━
+💕 Che birichino/a!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SUSSURRO ==========
+        else if (command === 'sussurro') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0 || args.length < 2) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno e scrivi!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.sussurro @persona Sei bellissimo/a`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            const whisper = args.slice(1).join(' ');
+            
+            const response = `
+╔═══════════════════════╗
+║  🤫 *SUSSURRO*        ║
+╚═══════════════════════╝
+
+${sender} sussurra all'orecchio di ${target}:
+
+━━━━━━━━━━━━━━━━━━━━━
+👂 *"${whisper}"*
+
+━━━━━━━━━━━━━━━━━━━━━
+😏 Intimo e misterioso...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== PICCANTE ==========
+        else if (command === 'piccante') {
+            const facts = [
+                { text: 'Il cioccolato aumenta il desiderio', emoji: '🍫🔥' },
+                { text: 'Un bacio brucia 6 calorie', emoji: '💋🔥' },
+                { text: 'Gli occhi si dilatano quando vedi qualcuno che ti piace', emoji: '👁️💕' },
+                { text: 'Il cuore batte più forte quando flirtiamo', emoji: '💓😏' },
+                { text: 'Le labbra sono 100 volte più sensibili delle dita', emoji: '💋✨' }
+            ];
+            
+            const fact = choice(facts);
+            
+            const response = `
+╔═══════════════════════╗
+║  🌶️ *FATTO PICCANTE* ║
+╚═══════════════════════╝
+
+${fact.emoji}
+
+${fact.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Interessante...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== DESIDERIO ==========
+        else if (command === 'desiderio') {
+            const desires = [
+                { text: 'Un bacio appassionato sotto la pioggia', emoji: '💋🌧️' },
+                { text: 'Una cena a lume di candela seguita da...', emoji: '🕯️😏' },
+                { text: 'Una notte da ricordare sotto le stelle', emoji: '⭐🌙' },
+                { text: 'Un weekend romantico in un luogo isolato', emoji: '🏝️❤️' },
+                { text: 'Una danza sensuale a mezzanotte', emoji: '💃🕛' }
+            ];
+            
+            const desire = choice(desires);
+            
+            const response = `
+╔═══════════════════════╗
+║  💭 *DESIDERIO*       ║
+╚═══════════════════════╝
+
+${desire.emoji}
+
+${desire.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Un sogno...`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== FANTASIA ==========
+        else if (command === 'fantasia') {
+            const fantasies = [
+                { text: 'Una fuga romantica a Parigi', emoji: '🗼❤️' },
+                { text: 'Una serata privata in una spa', emoji: '🛀💕' },
+                { text: 'Un picnic al tramonto sulla spiaggia', emoji: '🌅🍷' },
+                { text: 'Una notte in una suite lussuosa', emoji: '🏨✨' },
+                { text: 'Un ballo lento al chiaro di luna', emoji: '🌙💃' }
+            ];
+            
+            const fantasy = choice(fantasies);
+            
+            const response = `
+╔═══════════════════════╗
+║  ✨ *FANTASIA*        ║
+╚═══════════════════════╝
+
+${fantasy.emoji}
+
+*Scenario:*
+${fantasy.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+😏 Immaginazione al potere!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== 7 MINUTI ==========
+        else if (command === 'gioco7minuti') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.gioco7minuti @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const response = `
+╔═══════════════════════╗
+║ ⏱️ *7 MINUTI PARADISO*║
+╚═══════════════════════╝
+
+🚪 *Nel ripostiglio:*
+
+👤 ${sender}
+     💕
+👤 ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+⏱️ Timer: 7:00
+
+3... 2... 1... VIA! 🔥
+
+━━━━━━━━━━━━━━━━━━━━━
+😏 Cosa succederà?`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== SPOGLIARELLO ==========
+        else if (command === 'spogliarello') {
+            const points = random(0, 100);
+            
+            let rating = '';
+            if (points >= 90) rating = '🔥🔥🔥 INFUOCANTE!';
+            else if (points >= 70) rating = '🔥🔥 Molto hot!';
+            else if (points >= 50) rating = '🔥 Buono!';
+            else rating = '😅 Serve pratica!';
+            
+            const response = `
+╔═══════════════════════╗
+║  💃 *SPOGLIARELLO*    ║
+╚═══════════════════════╝
+
+🎭 *Performance:*
+
+━━━━━━━━━━━━━━━━━━━━━
+📊 Punteggio: *${points}/100*
+
+${rating}
+
+━━━━━━━━━━━━━━━━━━━━━
+😏 Che spettacolo!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== DIRTY ==========
+        else if (command === 'dirty') {
+            const questions = [
+                { text: 'Qual è il tuo più grande segreto intimo?', emoji: '🔥' },
+                { text: 'Hai mai fatto qualcosa di molto audace?', emoji: '😈' },
+                { text: 'Qual è la cosa più piccante che hai fatto?', emoji: '🌶️' },
+                { text: 'Cosa ti eccita di più?', emoji: '💋' },
+                { text: 'Qual è la tua fantasia più nascosta?', emoji: '😏' }
+            ];
+            
+            const question = choice(questions);
+            
+            const response = `
+╔═══════════════════════╗
+║  😈 *DIRTY QUESTION*  ║
+╚═══════════════════════╝
+
+${question.emoji}
+
+*${question.text}*
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Rispondi se osi!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== NAUGHTY ==========
+        else if (command === 'naughty') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.naughty @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Qualcuno';
+            
+            const messages = [
+                { text: `${sender} guarda ${target} con uno sguardo malizioso... 😏`, emoji: '😈' },
+                { text: `${sender} manda un messaggio birichino a ${target}... 🔥`, emoji: '💋' },
+                { text: `${sender} fa una proposta indecente a ${target}... 😏`, emoji: '🌶️' },
+                { text: `${sender} ha pensieri proibiti su ${target}... 🔥`, emoji: '😈' }
+            ];
+            
+            const message = choice(messages);
+            
+            const response = `
+╔═══════════════════════╗
+║  😈 *NAUGHTY*         ║
+╚═══════════════════════╝
+
+${message.emoji}
+
+${message.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Che birichino/a!`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== TEMPERATURA ==========
+        else if (command === 'temperatura') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.temperatura @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Tu';
+            const temp = random(0, 100);
+            
+            let emoji = '';
+            let status = '';
+            
+            if (temp >= 90) {
+                emoji = '🔥🔥🔥';
+                status = 'ROVENTE! Temperatura alle stelle!';
+            } else if (temp >= 70) {
+                emoji = '🔥🔥';
+                status = 'Molto calda! C\'è tensione!';
+            } else if (temp >= 50) {
+                emoji = '🔥';
+                status = 'Calda! Qualcosa bolle in pentola!';
+            } else if (temp >= 30) {
+                emoji = '🌡️';
+                status = 'Tiepida... serve più fuoco!';
+            } else {
+                emoji = '❄️';
+                status = 'Fredda... nessuna scintilla!';
+            }
+            
+            const response = `
+╔═══════════════════════╗
+║  🌡️ *TEMPERATURA*     ║
+╚═══════════════════════╝
+
+👤 ${sender}
+     💕
+👤 ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+🌡️ *${temp}°C*
+
+${emoji}
+
+${status}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== CHIMICA ==========
+        else if (command === 'chimica') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.chimica @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Tu';
+            const chemistry = percentage();
+            
+            let verdict = '';
+            if (chemistry >= 80) verdict = '💥 ESPLOSIVA! Scintille ovunque!';
+            else if (chemistry >= 60) verdict = '⚡ Forte! C\'è attrazione!';
+            else if (chemistry >= 40) verdict = '✨ Presente! Potrebbe funzionare!';
+            else verdict = '😐 Debole... servono più ingredienti!';
+            
+            const response = `
+╔═══════════════════════╗
+║  ⚗️ *CHIMICA FISICA*  ║
+╚═══════════════════════╝
+
+👤 ${sender}
+     ⚡
+👤 ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+⚗️ Chimica: *${chemistry}%*
+
+${verdict}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== ATTRAZIONE ==========
+        else if (command === 'attrazione') {
+            const mentions = await msg.getMentions();
+            
+            if (mentions.length === 0) {
+                return msg.reply(
+                    '⚠️ *Uso comando:*\n\n' +
+                    '💡 Menziona qualcuno!\n\n' +
+                    '📝 *Esempio:*\n' +
+                    '• `.attrazione @persona`'
+                );
+            }
+            
+            const target = mentions[0].pushname || mentions[0].verifiedName || 'qualcuno';
+            const sender = msg._data.notifyName || 'Tu';
+            const attraction = percentage();
+            
+            let magnetic = '';
+            if (attraction >= 90) magnetic = '🧲🧲🧲 MAGNETISMO IRRESISTIBILE!';
+            else if (attraction >= 70) magnetic = '🧲🧲 Forte attrazione!';
+            else if (attraction >= 50) magnetic = '🧲 Attrazione presente!';
+            else magnetic = '😐 Attrazione debole...';
+            
+            const response = `
+╔═══════════════════════╗
+║  🧲 *ATTRAZIONE*      ║
+╚═══════════════════════╝
+
+👤 ${sender}
+     🧲
+👤 ${target}
+
+━━━━━━━━━━━━━━━━━━━━━
+📊 Livello: *${attraction}%*
+
+${magnetic}`;
+            
+            await msg.reply(response);
+        }
+
+        // ========== TENTAZIONE ==========
+        else if (command === 'tentazione') {
+            const temptations = [
+                { text: 'Un bacio rubato nel buio...', emoji: '💋🌑' },
+                { text: 'Uno sguardo che dice tutto...', emoji: '👁️🔥' },
+                { text: 'Un tocco "accidentale"...', emoji: '🤚✨' },
+                { text: 'Un sussurro proibito...', emoji: '👂😏' },
+                { text: 'Una proposta irresistibile...', emoji: '😈💕' }
+            ];
+            
+            const temptation = choice(temptations);
+            
+            const response = `
+╔═══════════════════════╗
+║  😈 *TENTAZIONE*      ║
+╚═══════════════════════╝
+
+${temptation.emoji}
+
+${temptation.text}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔥 Resisti... se ci riesci!`;
+            
+            await msg.reply(response);
+        }
+
 
         // ===== FUN & SOCIAL =====
 
@@ -3895,31 +5696,29 @@ else if (command === 'ds') {
             saveData();
         }
 
-    
-
-        // ========== Fallback per comandi non riconosciuti ==========
+    // ========== Fallback per comandi non riconosciuti ==========
         else {
-            // lasciare silenzioso o suggerire .menu
-            // per non sovraccaricare il gruppo rispondi solo se in privato
-            if (!isGroup) await msg.reply('❓ Comando non riconosciuto. Usa .menu per la lista dei comandi.');
+            if (!isGroup) {
+                await msg.reply('❓ Comando non riconosciuto. Usa `.fun` per la lista dei comandi fun!');
+            }
         }
 
-     } catch (err) {
-        console.error('⚠️ Errore nel processamento del messaggio:', err);
+    } catch (error) {
+        console.error('⚠️ Errore nel processamento del messaggio:', error);
+        try {
+            await msg.reply('❌ Si è verificato un errore! Riprova.');
+        } catch (err) {
+            console.error('Errore invio messaggio di errore:', err);
+        }
     }
-}); // Chiude client.on('message')     
-       
 
-    
+    } catch (error) {
+        console.error('⚠️ Errore nel processamento del messaggio:', error);
+        await msg.reply('❌ Si è verificato un errore! Riprova.');
+    }
+}); // Chiude client.on('message')
 
-
-// salva dati al termine del processo
-process.on('exit', () => saveData());
-process.on('SIGINT', () => { saveData(); process.exit(); });
-process.on('SIGTERM', () => { saveData(); process.exit(); });
-
-// avvia il client
+// Avvia il client
 client.initialize();
 
-
-
+console.log('🚀 Bot WhatsApp in avvio...');
