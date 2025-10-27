@@ -6,6 +6,14 @@ const gameStates = new Map();
 const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const choice = (arr) => arr[random(0, arr.length - 1)];
 const percentage = () => random(0, 100);
+const DEFAULT_PREFIX = '.';
+let prefixes = {}; // caricalo/salvalo da JSON come fai per gli altri dati
+const userStatsFile = './userStats.json';
+
+// funzione corretta
+function getPrefix(chatId) {
+  return prefixes && prefixes[chatId] ? prefixes[chatId] : DEFAULT_PREFIX;
+} // <- <- chiusura obbligatoria
 
 let text = '';
 
@@ -517,6 +525,67 @@ client.on('message', async (msg) => {
             }
         }
 
+            // ======== CONTROLLO VISUAL MODE (deve girare PRIMA del parsing comandi) ========
+if (isGroup && groupInfo?.visualMode && msg.hasMedia) {
+    // Se non è admin, applica la regola
+    if (!await isAdmin(msg, chat)) {
+        try {
+            // scarica il media solo se necessario (puoi rimuovere se non serve)
+            // const media = await msg.downloadMedia();
+
+            // Se il media NON è viewOnce -> elimina e avvisa
+            if (!msg.isViewOnce) {
+                try { await msg.delete(true); } catch (e) { /* ignore */ }
+
+                const sender = msg._data?.notifyName || 'Utente';
+                const contact = await client.getContactById(userId);
+                const warningMsg = `
+╔═══════════════════════╗
+║  ⚠️ *VISUAL MODE*     ║
+╚═══════════════════════╝
+
+@${userId.split('@')[0]} ⚠️
+
+❌ *Media eliminato!*
+
+📸 Puoi mandare SOLO foto/video
+con visualizzazione singola!
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Invia il media come "Visualizza una volta"`;
+                
+                await chat.sendMessage(warningMsg, { mentions: [contact] });
+                console.log(`[VISUAL MODE] Media normale eliminato da ${sender}`);
+                return; // esci: non vogliamo processare comandi su questo messaggio
+            }
+        } catch (err) {
+            console.error('Errore controllo visual mode:', err);
+            // non bloccare l'esecuzione del resto se il controllo fallisce
+        }
+    }
+}
+
+// ======== PARSING PREFIX + COMANDO (robusto per media con caption/no-body) ========
+// usa sia msg.body che msg.caption (alcune librerie mettono la caption in msg.caption)
+const content = (typeof msg.body === 'string' ? msg.body : (msg.caption || ''))?.trim() || '';
+
+// Se non c'è testo o caption, non è un comando testuale: esci
+if (!content) return;
+
+// Recupera prefix per la chat (fallback a DEFAULT_PREFIX)
+const prefix = typeof getPrefix === 'function' ? getPrefix(msg.from) : DEFAULT_PREFIX;
+
+// Se il contenuto non inizia con il prefix, non è un comando: esci
+if (!content.startsWith(prefix)) return;
+
+// Estrai comando e args
+const withoutPrefix = content.slice(prefix.length).trim();
+if (!withoutPrefix) return;
+
+const cmdArgs = withoutPrefix.split(/\s+/);
+
+
+
         // Anti-link
         if (groupInfo?.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
             if (!(await isAdmin(msg, chat))) {
@@ -567,6 +636,54 @@ client.on('message', async (msg) => {
                 return;
             } catch {}
         }
+
+        // Carica dati da file all'avvio
+if (fs.existsSync(userStatsFile)) {
+    try {
+        userStats = JSON.parse(fs.readFileSync(userStatsFile, 'utf8'));
+    } catch (err) {
+        console.error('Errore nel caricamento di userStats.json:', err);
+        userStats = {};
+    }
+} else {
+    fs.writeFileSync(userStatsFile, JSON.stringify({}, null, 2));
+}
+
+// Funzione per salvare i dati
+function saveUserStats() {
+    try {
+        fs.writeFileSync(userStatsFile, JSON.stringify(userStats, null, 2));
+    } catch (err) {
+        console.error('Errore nel salvataggio di userStats.json:', err);
+    }
+}
+
+// Inizializza utente se non esiste
+function initUser(id) {
+    if (!userStats[id]) {
+        userStats[id] = {
+            level: 1,
+            xp: 0,
+            messages: 0,
+            dailyStreak: 0,
+            instagram: null
+        };
+        saveUserStats();
+    }
+}
+
+// Esempio funzioni ausiliarie (se non le hai già)
+function getRank(level) {
+    if (level >= 50) return { name: 'Leggenda', emoji: '👑' };
+    if (level >= 25) return { name: 'Maestro', emoji: '💠' };
+    if (level >= 10) return { name: 'Esperto', emoji: '🔥' };
+    if (level >= 5)  return { name: 'Apprendista', emoji: '⭐' };
+    return { name: 'Novizio', emoji: '🌱' };
+}
+
+function getXPForLevel(level) {
+    return 100 + (level * 50);
+}
 
         // Anti-flood
         if (automod?.antiFlood) {
@@ -739,6 +856,9 @@ else if (command === 'moderazione' || command === 'mod') {
 • \`.setwelcome [msg]\` - Msg benvenuto
 • \`.setgoodbye [msg]\` - Msg addio
 • \`.setmaxwarns [num]\` - Max warn
+• \`.visual on/off\` - Foto visualizzabili una volta
+• \`.link\` - Manda link del gruppo
+• \`.revoke\` - Resetta link del gruppo
 
 📊 *STATISTICHE:*
 • \`.info\` - Info gruppo
@@ -2175,6 +2295,9 @@ else if (command === 'fun' || command === 'divertimento') {
 - \`.moneta\` - Lancia moneta
 - \`.grattaevinci\` - Gratta e vinci
 - \`.lotteria\` - Numeri fortunati
+- \`.setig\` - Setta l instagram (admin)
+- \`.setuserig\` - Setta l instagram di un utente (admin)
+
 
 🃏 *CASINO & CARTE:*
 - \`.blackjack\` - Blackjack vs bot
@@ -2735,6 +2858,158 @@ else if (command === 'info') {
                 await msg.reply('❌ Errore nella generazione del QR.');
             }
         }
+
+        // ========== LINK GRUPPO ==========
+else if (command === 'link' || command === 'invite') {
+    if (!isGroup) {
+        return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    }
+    
+    if (!await isBotAdmin(chat)) {
+        return msg.reply('⚠️ Il bot deve essere admin per ottenere il link del gruppo!');
+    }
+    
+    try {
+        // Ottieni il codice di invito del gruppo
+        const inviteCode = await chat.getInviteCode();
+        const inviteLink = `https://chat.whatsapp.com/${inviteCode}`;
+        
+        // Genera QR code (usa un servizio API per QR code)
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(inviteLink)}`;
+        
+        const response = `
+╔═══════════════════════╗
+║  🔗 *LINK GRUPPO*     ║
+╚═══════════════════════╝
+
+👥 *Gruppo:* ${chat.name}
+
+━━━━━━━━━━━━━━━━━━━━━
+🔗 *Link di invito:*
+${inviteLink}
+
+━━━━━━━━━━━━━━━━━━━━━
+📱 *Come usarlo:*
+- Copia e condividi il link
+- Scansiona il QR code qui sotto
+- Valido fino alla revoca
+
+⚠️ *Attenzione:*
+Chiunque abbia questo link può
+entrare nel gruppo!`;
+
+        // Invia il messaggio
+        await msg.reply(response);
+        
+        // Scarica e invia il QR code
+        const axios = require('axios');
+        const { MessageMedia } = require('whatsapp-web.js');
+        
+        const qrResponse = await axios.get(qrCodeUrl, { responseType: 'arraybuffer' });
+        const qrMedia = new MessageMedia(
+            'image/png',
+            Buffer.from(qrResponse.data).toString('base64'),
+            'qrcode.png'
+        );
+        
+        await chat.sendMessage(qrMedia, {
+            caption: `📲 *QR CODE GRUPPO*\n\n✨ Scansiona per entrare nel gruppo!\n\n🔗 ${chat.name}`
+        });
+        
+        console.log(`[LINK] Link gruppo richiesto in ${chat.name}`);
+        
+    } catch (error) {
+        console.error('Errore generazione link:', error);
+        await msg.reply('❌ Errore durante la generazione del link! Assicurati che il bot sia admin.');
+    }
+}
+
+// ========== REVOKE LINK ==========
+else if (command === 'revoke' || command === 'resetlink') {
+    if (!isGroup) {
+        return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    }
+    
+    if (!await isAdmin(msg, chat)) {
+        return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    }
+    
+    if (!await isBotAdmin(chat)) {
+        return msg.reply('⚠️ Il bot deve essere admin per revocare il link!');
+    }
+    
+    try {
+        // Revoca il vecchio link e ne genera uno nuovo
+        await chat.revokeInvite();
+        
+        const response = `
+╔═══════════════════════╗
+║  🔄 *LINK REVOCATO*   ║
+╚═══════════════════════╝
+
+✅ *Link precedente revocato!*
+
+Il vecchio link non funziona più.
+È stato generato un nuovo link.
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Usa \`.link\` per ottenere
+il nuovo link di invito!
+
+👮 Revocato da: ${msg._data.notifyName || 'Admin'}`;
+        
+        await msg.reply(response);
+        
+        console.log(`[REVOKE] Link revocato in ${chat.name} da ${msg._data.notifyName}`);
+        
+    } catch (error) {
+        console.error('Errore revoca link:', error);
+        await msg.reply('❌ Errore durante la revoca del link!');
+    }
+}
+
+    // ========== VISUAL MODE ==========
+else if (command === 'visual') {
+    if (!isGroup) {
+        return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    }
+    
+    if (!await isAdmin(msg, chat)) {
+        return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    }
+    
+    const action = args[0]?.toLowerCase();
+    
+    if (!action || !['on', 'off'].includes(action)) {
+        return msg.reply(
+            '⚠️ *Uso comando:*\n\n' +
+            '💡 Attiva/disattiva modalità visual\n\n' +
+            '📝 *Esempio:*\n' +
+            '• `.visual on` - Attiva (solo foto 1 visual)\n' +
+            '• `.visual off` - Disattiva\n\n' +
+            '📊 *Stato attuale:* ' + (groupInfo.visualMode ? '✅ ON' : '❌ OFF')
+        );
+    }
+    
+    groupInfo.visualMode = (action === 'on');
+    saveData();
+    
+    const status = groupInfo.visualMode ? 'attivata ✅' : 'disattivata ❌';
+    
+    const response = `
+╔═══════════════════════╗
+║  👁️ *VISUAL MODE*     ║
+╚═══════════════════════╝
+
+📸 Modalità visual ${status}
+
+${groupInfo.visualMode ? '⚠️ *Regola attiva:*\nSono permesse SOLO foto/video\ncon visualizzazione singola!\n\n❌ Foto/video "sempre visibili"\nverranno eliminati automaticamente.' : '✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi\ntipo di media senza restrizioni.'}
+
+━━━━━━━━━━━━━━━━━━━━━
+👮 Impostato da: ${msg._data.notifyName || 'Admin'}`;
+    
+    await msg.reply(response);
+}
 
         
 
@@ -5513,26 +5788,38 @@ else if (command === 'profilo' || command === 'profile') {
     const messages = stats.messages || 0;
     const rep = stats.reputation || 0;
     const bio = stats.bio || 'Nessuna bio impostata';
-    
+
+    // --- Recupera Instagram se presente ---
+    let igHandle = null;
+    if (stats.instagram) igHandle = stats.instagram;
+    else if (stats.ig) igHandle = stats.ig;
+    if (igHandle) {
+        igHandle = igHandle.toString().trim().replace(/^@/, ''); // normalizza rimuovendo @
+        if (igHandle === '') igHandle = null;
+    }
+
     try {
         const contact = await msg.getContact();
         const userName = contact.pushname || contact.name || 'Utente';
         const about = contact.statusMessage || 'Nessuno stato';
-        
+
         // Determina il rank
         let rank = '🥉 Bronzo';
         if (level >= 30) rank = '💎 Diamante';
         else if (level >= 20) rank = '🏅 Platino';
         else if (level >= 10) rank = '🥇 Oro';
         else if (level >= 5) rank = '🥈 Argento';
-        
+
         // Recupera economia
         const eco = economy[userId] || { money: 0, bank: 0 };
-        
+
         // Recupera warnings
         const warns = warnings[userId] || 0;
-        
-        const profileMsg = 
+
+        // Se esiste Instagram, prepara la riga (tag + link)
+        const igSection = igHandle ? `📸 Instagram: @${igHandle}\n🔗 https://instagram.com/${igHandle}\n\n` : '';
+
+        const profileMsg =
             `👤 *PROFILO DI ${userName.toUpperCase()}*\n\n` +
             `━━━━━━━━━━━━━━━\n` +
             `🏆 Livello: *${level}*\n` +
@@ -5546,10 +5833,11 @@ else if (command === 'profilo' || command === 'profile') {
             `🏦 Bank: $${eco.bank}\n` +
             `⚠️ Warning: ${warns}/3\n\n` +
             `━━━━━━━━━━━━━━━\n` +
+            igSection + // qui inserisco l'Instagram se presente
             `💭 Bio: _"${bio}"_\n` +
             `📱 Stato: _"${about}"_\n` +
             `━━━━━━━━━━━━━━━`;
-        
+
         // Prova a inviare con foto profilo
         try {
             const profilePic = await contact.getProfilePicUrl();
@@ -5559,11 +5847,64 @@ else if (command === 'profilo' || command === 'profile') {
             // Se non c'è foto profilo, invia solo testo
             await msg.reply(profileMsg);
         }
-        
+
     } catch (err) {
         console.error('Errore profilo:', err);
         await msg.reply('❌ Errore nel recuperare il profilo.');
     }
+}
+
+     // ========== .setig ==========
+else if (command === 'setig') {
+    const ig = args.join(' ').trim();
+    if (!ig) return await msg.reply('📸 Uso corretto:\n.setig {instagram}\nEsempio: `.setig cristian_fx`');
+
+    initUser(userId);
+    const clean = ig.replace(/^@/, '').trim();
+
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(clean))
+        return await msg.reply('⚠️ Username Instagram non valido. Usa solo lettere, numeri, punti o underscore.');
+
+    userStats[userId].instagram = clean;
+    saveUserStats();
+
+    await msg.reply(`✅ Il tuo Instagram è stato impostato su: @${clean}\n🔗 https://instagram.com/${clean}`);
+}
+
+
+// ========== .setuserig ==========
+else if (command === 'setuserig') {
+    const mentions = await msg.getMentions();
+    let targetId = null;
+    let ig = '';
+
+    if (mentions.length > 0) {
+        targetId = mentions[0].id._serialized;
+        ig = args.slice(1).join(' ').trim();
+    } else {
+        if (args.length < 2)
+            return await msg.reply('📸 Uso corretto:\n.setuserig {@utente} {instagram}\nOppure: .setuserig {userId} {instagram}');
+        targetId = args[0];
+        ig = args.slice(1).join(' ').trim();
+    }
+
+    if (!ig) return await msg.reply('⚠️ Specifica l’handle Instagram.');
+
+    const clean = ig.replace(/^@/, '').trim();
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(clean))
+        return await msg.reply('⚠️ Username Instagram non valido. Usa solo lettere, numeri, punti o underscore.');
+
+    initUser(targetId);
+    userStats[targetId].instagram = clean;
+    saveUserStats();
+
+    let targetDisplay = 'Utente';
+    try {
+        if (mentions.length > 0)
+            targetDisplay = mentions[0].pushname || mentions[0].verifiedName || targetDisplay;
+    } catch {}
+
+    await msg.reply(`✅ Instagram di *${targetDisplay}* impostato su: @${clean}\n🔗 https://instagram.com/${clean}`);
 }
 
 // ========== CLEAR CACHE (DS) ==========
