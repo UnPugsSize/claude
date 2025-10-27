@@ -530,16 +530,23 @@ if (isGroup && groupInfo?.visualMode && msg.hasMedia) {
     // Se non è admin, applica la regola
     if (!await isAdmin(msg, chat)) {
         try {
-            // scarica il media solo se necessario (puoi rimuovere se non serve)
-            // const media = await msg.downloadMedia();
+            const type = msg.type?.toLowerCase(); // tipo del media (image, video, audio, sticker, ecc.)
 
-            // Se il media NON è viewOnce -> elimina e avvisa
-            if (!msg.isViewOnce) {
-                try { await msg.delete(true); } catch (e) { /* ignore */ }
+            // ✅ controlla SOLO foto e video
+            if (type === 'image' || type === 'video') {
+                // Se il media NON è "visualizza una volta" → elimina e avvisa
+                if (!msg.isViewOnce && !msg._data?.isViewOnce) {
+                    try { 
+                        await msg.delete(true); 
+                    } catch (e) { 
+                        console.warn('Impossibile eliminare il messaggio:', e.message);
+                    }
 
-                const sender = msg._data?.notifyName || 'Utente';
-                const contact = await client.getContactById(userId);
-                const warningMsg = `
+                    const sender = msg._data?.notifyName || 'Utente';
+                    const userId = msg.author || msg.from; // compatibilità per diversi tipi di messaggi
+                    const contact = await client.getContactById(userId);
+
+                    const warningMsg = `
 ╔═══════════════════════╗
 ║  ⚠️ *VISUAL MODE*     ║
 ╚═══════════════════════╝
@@ -548,22 +555,27 @@ if (isGroup && groupInfo?.visualMode && msg.hasMedia) {
 
 ❌ *Media eliminato!*
 
-📸 Puoi mandare SOLO foto/video
-con visualizzazione singola!
+📸 In questa chat puoi inviare **solo foto e video**
+con *visualizzazione singola (1 visual)*!
 
 ━━━━━━━━━━━━━━━━━━━━━
-💡 Invia il media come "Visualizza una volta"`;
-                
-                await chat.sendMessage(warningMsg, { mentions: [contact] });
-                console.log(`[VISUAL MODE] Media normale eliminato da ${sender}`);
-                return; // esci: non vogliamo processare comandi su questo messaggio
+💡 Suggerimento: quando invii il media,
+tocca su 📸 e scegli "Visualizza una volta" prima di inviare.`;
+
+                    await chat.sendMessage(warningMsg, { mentions: [contact] });
+                    console.log(`[VISUAL MODE] Media non view-once eliminato da ${sender}`);
+                    return; // Esci: non processare altro su questo messaggio
+                }
             }
+
+            // Se è un altro tipo di media (sticker, audio, ecc.) → ignoralo
         } catch (err) {
-            console.error('Errore controllo visual mode:', err);
-            // non bloccare l'esecuzione del resto se il controllo fallisce
+            console.error('Errore nel controllo visual mode:', err);
+            // non bloccare l'esecuzione del resto del codice se fallisce
         }
     }
 }
+
 
 // ======== PARSING PREFIX + COMANDO (robusto per media con caption/no-body) ========
 // usa sia msg.body che msg.caption (alcune librerie mettono la caption in msg.caption)
