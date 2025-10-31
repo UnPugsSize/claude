@@ -3091,7 +3091,7 @@ il nuovo link di invito!
 }
 
     // ========== VISUAL MODE ==========
-else if (command === 'visual') {
+ if (command === 'visual') {
   try {
     if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
