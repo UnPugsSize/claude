@@ -599,7 +599,7 @@ if (isGroup && groupInfo?.visualMode && msg.hasMedia) {
 ║  ⚠️ *VISUAL MODE*     ║
 ╚═══════════════════════╝
 
-@${userId.split('@')[0]} ⚠️
+@${displayTag} ⚠️
 
 ❌ *Media eliminato!*
 
@@ -1128,35 +1128,32 @@ else if (command === 'kick' || command === 'remove') {
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
     if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rimuovere utenti!');
 
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) {
-        return msg.reply(
-            '⚠️ *Menziona un utente!*\n\n' +
-            '💡 *Uso:* `.kick @utente [motivo]`\n' +
-            '📝 *Esempio:* `.kick @mario Spam`'
-        );
-    }
-
     try {
-        const toKick = mentioned[0];
-        const toKickId = toKick.id._serialized;
+        const targetContact = await getTargetFromMsg(msg);
+        if (!targetContact) {
+            return msg.reply(
+                '⚠️ *Menziona un utente o rispondi al suo messaggio!*\n\n' +
+                '💡 *Uso:* `.kick @utente [motivo]`\n' +
+                '📝 *Esempio:* `.kick @mario Spam`'
+            );
+        }
+
+        const toKickId = targetContact.id._serialized;
         const toKickNumber = toKickId.split('@')[0];
         const toKickName = await getUserDisplayName(toKickId, chat);
         const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
 
-        // Verifica se è admin
+        // Verifica partecipante aggiornato
         const freshChat = await client.getChatById(chat.id._serialized);
         const participant = freshChat.participants.find(p => p.id._serialized === toKickId);
 
         if (!participant) {
             return msg.reply('❌ Utente non trovato nel gruppo!');
         }
-
         if (participant.isAdmin || participant.isSuperAdmin) {
-            return msg.reply('⚠️ Non posso rimuovere un admin! Degradalo prima con `.d @utente`');
+            return msg.reply('⚠️ Non posso rimuovere un admin! Degradalo prima con `.d @utente`', { mentions: [targetContact] });
         }
 
-        // Rimuovi (kick) — NON aggiungere alla lista dei bannati
         await chat.removeParticipants([toKickId]);
 
         await msg.reply(
@@ -1168,11 +1165,11 @@ else if (command === 'kick' || command === 'remove') {
             `📝 *Motivo:* ${reason}\n` +
             `👮 *Admin:* ${msg.author.split('@')[0]}\n\n` +
             `━━━━━━━━━━━━━━━━━━━━━\n` +
-            `✅ L'utente è stato espulso dal gruppo.`
+            `✅ L'utente è stato espulso dal gruppo.`,
+            { mentions: [targetContact] }
         );
 
         console.log(`[KICK] ${toKickName} rimosso da ${msg.author}`);
-
     } catch (err) {
         console.error('Errore kick:', err);
         await msg.reply('❌ Errore durante la rimozione. Verifica che:\n• Il bot sia admin\n• L\'utente non sia admin\n• L\'utente sia nel gruppo');
@@ -1180,33 +1177,56 @@ else if (command === 'kick' || command === 'remove') {
 }
 
 
+// Helper: ottieni target da mentions o da reply
+async function getTargetFromMsg(msg) {
+  // 1) se ci sono mentions, prendi la prima
+  const mentioned = await msg.getMentions();
+  if (mentioned && mentioned.length > 0) {
+    return mentioned[0]; // è già un Contact
+  }
+
+  // 2) se il comando è una reply, prendi l'autore del messaggio quotato
+  if (msg.hasQuotedMsg) {
+    try {
+      const quoted = await msg.getQuotedMessage();
+      const authorId = quoted.author || quoted.from; // es. "3933...@c.us"
+      if (authorId) {
+        const contact = await client.getContactById(authorId);
+        return contact;
+      }
+    } catch (e) {
+      console.error('Errore getQuotedMessage:', e);
+    }
+  }
+
+  // nessun target
+  return null;
+}
+
 // ========== MUTA ==========
-else if (command === 'muta' || command === 'mute') {
+if (command === 'muta' || command === 'mute') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
     if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) {
-        return msg.reply(
-            '⚠️ *Menziona un utente!*\n\n' +
-            '💡 *Uso:*\n' +
-            '• `.muta @utente` - Mute permanente\n' +
-            '• `.muta @utente 30` - Mute 30 minuti\n' +
-            '• `.muta @utente 2h` - Mute 2 ore\n' +
-            '• `.muta @utente 1d` - Mute 1 giorno'
-        );
-    }
-    
+
     try {
-        const toMute = mentioned[0];
-        const toMuteId = toMute.id._serialized;
+        const targetContact = await getTargetFromMsg(msg);
+        if (!targetContact) {
+            return msg.reply(
+                '⚠️ *Menziona un utente o rispondi a un suo messaggio!*\n\n' +
+                '💡 *Uso:*\n' +
+                '• `.muta @utente` - Mute permanente\n' +
+                '• `.muta @utente 30` - Mute 30 minuti\n' +
+                '• `.muta @utente 2h` - Mute 2 ore\n' +
+                '• `.muta @utente 1d` - Mute 1 giorno'
+            );
+        }
+
+        const toMuteId = targetContact.id._serialized;
         const toMuteName = await getUserDisplayName(toMuteId, chat);
-        
-        // Parse tempo (supporta minuti, ore, giorni)
+        // parse tempo
         let muteMinutes = 0;
         const timeArg = args[args.length - 1];
-        
         if (timeArg) {
             if (timeArg.endsWith('d')) {
                 muteMinutes = parseInt(timeArg) * 24 * 60;
@@ -1216,40 +1236,47 @@ else if (command === 'muta' || command === 'mute') {
                 muteMinutes = parseInt(timeArg);
             }
         }
-        
+
         initGroup(chat.id._serialized);
         const g = groupData[chat.id._serialized];
-        
-        // Verifica se già mutato
+
         if (g.mutedUsers.includes(toMuteId)) {
-            return msg.reply(`⚠️ *${toMuteName}* è già mutato! Usa \`.smuta @utente\` per rimuovere il mute.`);
+            return msg.reply(`⚠️ *${toMuteName}* è già mutato! Usa \`.smuta @utente\` per rimuovere il mute.`, {
+                mentions: [targetContact]
+            });
         }
-        
-        // Aggiungi a mutati
+
         g.mutedUsers.push(toMuteId);
-        
+
         let responseText = '';
-        
+        let unmuteTime = null;
+
         if (muteMinutes > 0) {
-            const unmuteTime = Date.now() + (muteMinutes * 60 * 1000);
+            unmuteTime = Date.now() + (muteMinutes * 60 * 1000);
             if (!g.muteTime) g.muteTime = {};
             g.muteTime[toMuteId] = unmuteTime;
-            
-            // Auto-unmute
+
+            // Auto-unmute (nota: setTimeout non persiste fra riavvii; se vuoi persistenza usa controllo periodico)
             setTimeout(async () => {
                 try {
-                    const idx = g.mutedUsers.indexOf(toMuteId);
+                    // ricarica g per evitare problemi con closure nel lungo periodo
+                    initGroup(chat.id._serialized);
+                    const gg = groupData[chat.id._serialized];
+                    const idx = gg.mutedUsers.indexOf(toMuteId);
                     if (idx !== -1) {
-                        g.mutedUsers.splice(idx, 1);
-                        delete g.muteTime[toMuteId];
+                        gg.mutedUsers.splice(idx, 1);
+                        delete gg.muteTime[toMuteId];
                         saveData();
-                        await client.sendMessage(chat.id._serialized, `🔊 *${toMuteName}* è stato automaticamente smutato!`);
+                        const contactSend = await client.getContactById(toMuteId);
+                        await client.sendMessage(chat.id._serialized, `🔊 *${contactSend.pushname || contactSend.number}* è stato automaticamente smutato!`, {
+                          mentions: [contactSend]
+                        });
                     }
                 } catch (err) {
                     console.error('Errore unmute automatico:', err);
                 }
             }, muteMinutes * 60 * 1000);
-            
+
             responseText = `
 ╔═══════════════════════╗
 ║  🔇 *UTENTE MUTATO*   ║
@@ -1275,12 +1302,12 @@ else if (command === 'muta' || command === 'mute') {
 ⚠️ Tutti i suoi messaggi verranno eliminati automaticamente.
 💡 Usa \`.smuta @utente\` per rimuovere il mute.`;
         }
-        
+
         saveData();
-        await msg.reply(responseText);
-        
+        // rispondi taggando
+        await msg.reply(responseText, { mentions: [targetContact] });
+
         console.log(`[MUTE] ${toMuteName} mutato per ${muteMinutes} minuti da ${msg.author}`);
-        
     } catch (err) {
         console.error('Errore muta:', err);
         await msg.reply('❌ Errore durante il mute.');
@@ -1291,31 +1318,36 @@ else if (command === 'muta' || command === 'mute') {
 else if (command === 'smuta' || command === 'unmute') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
-    const mentioned = await msg.getMentions();
-    if (mentioned.length === 0) return msg.reply('⚠️ Menziona un utente! Uso: `.smuta @utente`');
-    
+
     try {
-        const toUnmuteId = mentioned[0].id._serialized;
-        const toUnmuteName = await getUserDisplayName(toUnmuteId, chat);
-        
-        initGroup(chat.id._serialized);
-        const g = groupData[chat.id._serialized];
-        const idx = g.mutedUsers.indexOf(toUnmuteId);
-        
-        if (idx === -1) {
-            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`);
+        // usa l'helper (getTargetFromMsg) per supportare mention o reply
+        const targetContact = await getTargetFromMsg(msg);
+        if (!targetContact) {
+            return msg.reply('⚠️ Menziona un utente o rispondi al suo messaggio! Uso: `.smuta @utente`');
         }
-        
+
+        const toUnmuteId = targetContact.id._serialized;
+        const toUnmuteName = await getUserDisplayName(toUnmuteId, chat);
+
+        initGroup(chat.id._serialized);
+        const g = groupData[chat.id._serialized] || { mutedUsers: [], muteTime: {} };
+
+        const idx = g.mutedUsers.indexOf(toUnmuteId);
+
+        if (idx === -1) {
+            // rispondi taggando comunque per chiarezza
+            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`, { mentions: [targetContact] });
+        }
+
+        // rimuovi dal vettore dei mutati
         g.mutedUsers.splice(idx, 1);
-        if (g.muteTime?.[toUnmuteId]) {
+        if (g.muteTime && g.muteTime[toUnmuteId]) {
             delete g.muteTime[toUnmuteId];
         }
-        
+
         saveData();
-        
-        await msg.reply(
-            `╔═══════════════════════╗
+
+        const responseText = `╔═══════════════════════╗
 ║  🔊 *UTENTE SMUTATO*  ║
 ╚═══════════════════════╝
 
@@ -1323,16 +1355,19 @@ else if (command === 'smuta' || command === 'unmute') {
 ✅ *Status:* Può scrivere liberamente
 
 ━━━━━━━━━━━━━━━━━━━━━
-Il mute è stato rimosso con successo!`
-        );
-        
+Il mute è stato rimosso con successo!`;
+
+        // rispondi taggando l'utente
+        await msg.reply(responseText, { mentions: [targetContact] });
+
         console.log(`[UNMUTE] ${toUnmuteName} smutato da ${msg.author}`);
-        
+
     } catch (err) {
         console.error('Errore smuta:', err);
         await msg.reply('❌ Errore durante lo smute.');
     }
 }
+
 
 // ========== WARN ==========
 else if (command === 'warn') {
@@ -3068,7 +3103,7 @@ else if (command === 'visual') {
 ║  👁️ *VISUAL MODE*     ║
 ╚═══════════════════════╝
 
-📸 Modalità visual ${status}
+📸 Modalità visual @@${displayTag}
 
 ${groupInfo.visualMode ? '⚠️ *Regola attiva:*\nSono permesse SOLO foto/video\ncon visualizzazione singola!\n\n❌ Foto/video "sempre visibili"\nverranno eliminati automaticamente.' : '✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi\ntipo di media senza restrizioni.'}
 
