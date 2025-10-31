@@ -3091,65 +3091,46 @@ il nuovo link di invito!
 }
 
     // ========== VISUAL MODE ==========
- if (command === 'visual') {
-  try {
-    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-
-    // Recupera il contact dell'admin che ha lanciato il comando (msg.author esiste nei gruppi)
-    const adminId = msg.author || msg.from;
-    const adminContact = await client.getContactById(adminId);
-
-    // Assicurati che i dati del gruppo esistano
-    initGroup(chat.id._serialized);
-    const g = groupData[chat.id._serialized] || (groupData[chat.id._serialized] = { visualMode: false });
-
-    const action = args[0]?.toLowerCase();
-
-    // testo da usare per il tag visibile (es. numero senza @c.us)
-    const displayTag = adminContact.number || adminContact.id._serialized.split('@')[0];
-
-    // se action non valida -> mostra uso + stato corrente (taggando l'admin)
-    if (!action || !['on', 'off'].includes(action)) {
-      const stato = g.visualMode ? '✅ ON' : '❌ OFF';
-      return msg.reply(
-        '⚠️ *Uso comando:*\n\n' +
-        '💡 Attiva/disattiva modalità visual\n\n' +
-        '📝 *Esempio:*\n' +
-        '• `.visual on` - Attiva (solo foto 1 visual)\n' +
-        '• `.visual off` - Disattiva\n\n' +
-        '📊 *Stato attuale:* ' + stato,
-        { mentions: [adminContact] }
-      );
+else if (command === 'visual') {
+    if (!isGroup) {
+        return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
     }
-
-    // Imposta la modalità e salva
-    g.visualMode = (action === 'on');
+    
+    if (!await isAdmin(msg, chat)) {
+        return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    }
+    
+    const action = args[0]?.toLowerCase();
+    
+    if (!action || !['on', 'off'].includes(action)) {
+        return msg.reply(
+            '⚠️ *Uso comando:*\n\n' +
+            '💡 Attiva/disattiva modalità visual\n\n' +
+            '📝 *Esempio:*\n' +
+            '• `.visual on` - Attiva (solo foto 1 visual)\n' +
+            '• `.visual off` - Disattiva\n\n' +
+            '📊 *Stato attuale:* ' + (groupInfo.visualMode ? '✅ ON' : '❌ OFF')
+        );
+    }
+    
+    groupInfo.visualMode = (action === 'on');
     saveData();
-
-    const statusText = g.visualMode
-      ? `⚠️ *Regola attiva:*\nSono permesse SOLO foto/video con visualizzazione singola!\n\n❌ Foto/video "sempre visibili" verranno eliminati automaticamente.`
-      : `✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi tipo di media senza restrizioni.`;
-
+    
+    const status = groupInfo.visualMode ? 'attivata ✅' : 'disattivata ❌';
+    
     const response = `
 ╔═══════════════════════╗
 ║  👁️ *VISUAL MODE*     ║
 ╚═══════════════════════╝
 
-📸 Modalità visual ${g.visualMode ? 'attivata' : 'disattivata'} @@${displayTag}
+📸 Modalità visual ${status}
 
-${statusText}
+${groupInfo.visualMode ? '⚠️ *Regola attiva:*\nSono permesse SOLO foto/video\ncon visualizzazione singola!\n\n❌ Foto/video "sempre visibili"\nverranno eliminati automaticamente.' : '✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi\ntipo di media senza restrizioni.'}
 
 ━━━━━━━━━━━━━━━━━━━━━
-👮 Impostato da: ${adminContact.pushname || displayTag}`;
-
-    // manda la risposta taggando l'admin
-    await msg.reply(response, { mentions: [adminContact] });
-
-  } catch (err) {
-    console.error('Errore comando visual:', err);
-    await msg.reply('❌ Errore durante l\'esecuzione del comando visual.');
-  }
+👮 Impostato da: ${msg._data.notifyName || 'Admin'}`;
+    
+    await msg.reply(response);
 }
 
 
