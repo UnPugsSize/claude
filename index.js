@@ -186,6 +186,55 @@ const getNormalizedNumber = async (msg) => {
     }
 };
 
+// ═══════════════════════════════════════
+// 👋 EVENTO BENVENUTO AUTOMATICO
+// ═══════════════════════════════════════
+
+// Event listener per nuovi membri
+client.on('group_join', async (notification) => {
+    try {
+        const chat = await client.getChatById(notification.chatId);
+        
+        if (!chat.isGroup) return;
+        
+        // Ottieni info sul nuovo membro
+        const newMember = notification.recipientIds[0];
+        const contact = await client.getContactById(newMember);
+        const memberName = contact.pushname || contact.verifiedName || 'Nuovo membro';
+        
+        // Messaggio di benvenuto con richiesta presentazione
+        const welcomeMsg = `
+╔═══════════════════════╗
+║  👋 *BENVENUTO/A!*    ║
+╚═══════════════════════╝
+
+Ciao @${newMember.split('@')[0]}! 🎉
+
+Benvenuto/a nel gruppo!
+
+━━━━━━━━━━━━━━━━━━━━━
+📝 *Presentati con:*
+
+👤 Nome
+🎂 Età  
+📍 Provenienza
+📸 Foto profilo a 1 visual
+
+━━━━━━━━━━━━━━━━━━━━━
+💬 Buona permanenza!`;
+
+        // Invia messaggio con tag
+        await chat.sendMessage(welcomeMsg, {
+            mentions: [contact]
+        });
+        
+        console.log(`[WELCOME] ${memberName} è entrato nel gruppo ${chat.name}`);
+        
+    } catch (error) {
+        console.error('Errore evento group_join:', error);
+    }
+});
+
 // Controlla se l'autore del messaggio è admin nel gruppo
 async function isAdmin(msg, chat) {
   try {
@@ -748,6 +797,9 @@ async function sendListOrFallback(client, to, text, sections, buttonText, title)
     await client.sendMessage(to, fallbackText);
   }
 }
+
+
+
 
 // ========== MENU PRINCIPALE ==========
 if (['menu', 'help', 'comandi'].includes(command)) {
@@ -2196,6 +2248,10 @@ else if (command === 'modoadmin' || command === 'adminmode') {
         `${status === 'on' ? '⚠️ Solo gli admin possono usare i comandi.' : '📋 Tutti possono usare i comandi base.'}`
     );
 }
+
+    
+
+
 
 // ========== MENU ECONOMIA ==========
 else if (command === 'economia' || command === 'eco') {
@@ -6048,6 +6104,8 @@ else if (command === 'ds') {
             delete gameStates[msg.from].memory;
             saveData();
         }
+
+        
 
     // ========== Fallback per comandi non riconosciuti ==========
         else {
