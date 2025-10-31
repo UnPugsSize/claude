@@ -186,29 +186,28 @@ const getNormalizedNumber = async (msg) => {
     }
 };
 
-// ═══════════════════════════════════════
-// 👋 EVENTO BENVENUTO AUTOMATICO
-// ═══════════════════════════════════════
-
-// Event listener per nuovi membri
+// EVENTO BENVENUTO AUTOMATICO (con tag funzionante)
 client.on('group_join', async (notification) => {
-    try {
-        const chat = await client.getChatById(notification.chatId);
-        
-        if (!chat.isGroup) return;
-        
-        // Ottieni info sul nuovo membro
-        const newMember = notification.recipientIds[0];
-        const contact = await client.getContactById(newMember);
-        const memberName = contact.pushname || contact.verifiedName || 'Nuovo membro';
-        
-        // Messaggio di benvenuto con richiesta presentazione
-        const welcomeMsg = `
+  try {
+    const chat = await client.getChatById(notification.chatId);
+    if (!chat || !chat.isGroup) return;
+
+    // ID del nuovo membro (es. "39333xxxxxxx@c.us")
+    const newMemberId = notification.recipientIds && notification.recipientIds[0];
+    if (!newMemberId) return;
+
+    // Recupera il contatto
+    const contact = await client.getContactById(newMemberId);
+    const displayTag = contact.number || newMemberId.split('@')[0]; // testo che comparirà dopo la @
+    const mentionObj = contact; // oggetto da passare in mentions
+
+    // Messaggio di benvenuto — includi @displayTag nel testo
+    const welcomeMsg = `
 ╔═══════════════════════╗
 ║  👋 *BENVENUTO/A!*    ║
 ╚═══════════════════════╝
 
-Ciao @${newMember.split('@')[0]}! 🎉
+Ciao @${displayTag} 🎉
 
 Benvenuto/a nel gruppo!
 
@@ -216,24 +215,24 @@ Benvenuto/a nel gruppo!
 📝 *Presentati con:*
 
 👤 Nome
-🎂 Età  
+🎂 Età
 📍 Provenienza
 📸 Foto profilo a 1 visual
 
 ━━━━━━━━━━━━━━━━━━━━━
 💬 Buona permanenza!`;
 
-        // Invia messaggio con tag
-        await chat.sendMessage(welcomeMsg, {
-            mentions: [contact]
-        });
-        
-        console.log(`[WELCOME] ${memberName} è entrato nel gruppo ${chat.name}`);
-        
-    } catch (error) {
-        console.error('Errore evento group_join:', error);
-    }
+    // Invia il messaggio con il mention (tag)
+    await chat.sendMessage(welcomeMsg, {
+      mentions: [mentionObj]
+    });
+
+    console.log(`[WELCOME] ${contact.pushname || displayTag} è entrato nel gruppo ${chat.name}`);
+  } catch (error) {
+    console.error('Errore evento group_join:', error);
+  }
 });
+
 
 // Controlla se l'autore del messaggio è admin nel gruppo
 async function isAdmin(msg, chat) {
@@ -6133,3 +6132,4 @@ else if (command === 'ds') {
 client.initialize();
 
 console.log('🚀 Bot WhatsApp in avvio...');
+
