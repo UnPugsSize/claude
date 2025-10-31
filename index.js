@@ -217,7 +217,7 @@ Benvenuto/a nel gruppo!
 👤 Nome
 🎂 Età
 📍 Provenienza
-📸 Foto profilo a 1 visual
+📸 Foto  a 1 visualizzazione
 
 ━━━━━━━━━━━━━━━━━━━━━
 💬 Buona permanenza!`;
@@ -1177,25 +1177,37 @@ else if (command === 'kick' || command === 'remove') {
 }
 
 
-// Helper: ottieni target da mentions o da reply
+// Helper: ottieni target da mentions o da reply (più robusto)
 async function getTargetFromMsg(msg) {
   // 1) se ci sono mentions, prendi la prima
-  const mentioned = await msg.getMentions();
-  if (mentioned && mentioned.length > 0) {
-    return mentioned[0]; // è già un Contact
+  try {
+    const mentioned = await msg.getMentions();
+    if (mentioned && mentioned.length > 0) return mentioned[0]; // Contact
+  } catch (e) {
+    console.error('getMentions error:', e && e.stack ? e.stack : e);
   }
 
   // 2) se il comando è una reply, prendi l'autore del messaggio quotato
   if (msg.hasQuotedMsg) {
     try {
       const quoted = await msg.getQuotedMessage();
-      const authorId = quoted.author || quoted.from; // es. "3933...@c.us"
+      // estrai l'id autore con più fallback possibili
+      const authorId =
+        quoted.author ||
+        quoted.from ||
+        (quoted._data && (quoted._data.participant || quoted._data.author || quoted._data.from)) ||
+        null;
+
       if (authorId) {
-        const contact = await client.getContactById(authorId);
-        return contact;
+        try {
+          const contact = await client.getContactById(authorId);
+          return contact;
+        } catch (err) {
+          console.error('client.getContactById(quoted author) error:', err && err.stack ? err.stack : err);
+        }
       }
     } catch (e) {
-      console.error('Errore getQuotedMessage:', e);
+      console.error('Errore getQuotedMessage:', e && e.stack ? e.stack : e);
     }
   }
 
@@ -1203,81 +1215,91 @@ async function getTargetFromMsg(msg) {
   return null;
 }
 
+// Utility per garantire struttura gruppo
+function ensureGroupData(chatId) {
+  initGroup(chatId); // se hai già questa funzione, la chiamiamo
+  if (!groupData[chatId]) groupData[chatId] = { mutedUsers: [], muteTime: {}, visualMode: false };
+  return groupData[chatId];
+}
+
 // ========== MUTA ==========
 if (command === 'muta' || command === 'mute') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
+  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+  if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
 
-    try {
-        const targetContact = await getTargetFromMsg(msg);
-        if (!targetContact) {
-            return msg.reply(
-                '⚠️ *Menziona un utente o rispondi a un suo messaggio!*\n\n' +
-                '💡 *Uso:*\n' +
-                '• `.muta @utente` - Mute permanente\n' +
-                '• `.muta @utente 30` - Mute 30 minuti\n' +
-                '• `.muta @utente 2h` - Mute 2 ore\n' +
-                '• `.muta @utente 1d` - Mute 1 giorno'
-            );
-        }
+  // ottieni chat affidabile (in alcune versioni msg.chat potrebbe non esserci)
+  const localChat = chat || (await msg.getChat());
 
-        const toMuteId = targetContact.id._serialized;
-        const toMuteName = await getUserDisplayName(toMuteId, chat);
-        // parse tempo
-        let muteMinutes = 0;
-        const timeArg = args[args.length - 1];
-        if (timeArg) {
-            if (timeArg.endsWith('d')) {
-                muteMinutes = parseInt(timeArg) * 24 * 60;
-            } else if (timeArg.endsWith('h')) {
-                muteMinutes = parseInt(timeArg) * 60;
-            } else if (!isNaN(parseInt(timeArg))) {
-                muteMinutes = parseInt(timeArg);
-            }
-        }
+  try {
+    const targetContact = await getTargetFromMsg(msg);
+    if (!targetContact) {
+      return msg.reply(
+        '⚠️ *Menziona un utente o rispondi a un suo messaggio!*\n\n' +
+        '💡 *Uso:*\n' +
+        '• `.muta @utente` - Mute permanente\n' +
+        '• `.muta @utente 30` - Mute 30 minuti\n' +
+        '• `.muta @utente 2h` - Mute 2 ore\n' +
+        '• `.muta @utente 1d` - Mute 1 giorno'
+      );
+    }
 
-        initGroup(chat.id._serialized);
-        const g = groupData[chat.id._serialized];
+    const toMuteId = targetContact.id._serialized;
+    const toMuteName = await getUserDisplayName(toMuteId, localChat);
 
-        if (g.mutedUsers.includes(toMuteId)) {
-            return msg.reply(`⚠️ *${toMuteName}* è già mutato! Usa \`.smuta @utente\` per rimuovere il mute.`, {
-                mentions: [targetContact]
+    // parse tempo
+    let muteMinutes = 0;
+    const timeArg = args[args.length - 1];
+    if (timeArg) {
+      if (timeArg.endsWith('d')) {
+        muteMinutes = parseInt(timeArg) * 24 * 60;
+      } else if (timeArg.endsWith('h')) {
+        muteMinutes = parseInt(timeArg) * 60;
+      } else if (!isNaN(parseInt(timeArg))) {
+        muteMinutes = parseInt(timeArg);
+      }
+    }
+
+    const chatId = localChat.id._serialized || localChat.id;
+    const g = ensureGroupData(chatId);
+
+    if (g.mutedUsers.includes(toMuteId)) {
+      return localChat.sendMessage(`⚠️ *${toMuteName}* è già mutato! Usa \`.smuta @utente\` per rimuovere il mute.`, {
+        mentions: [targetContact]
+      });
+    }
+
+    g.mutedUsers.push(toMuteId);
+
+    let responseText = '';
+    let unmuteTime = null;
+
+    if (muteMinutes > 0) {
+      unmuteTime = Date.now() + (muteMinutes * 60 * 1000);
+      if (!g.muteTime) g.muteTime = {};
+      g.muteTime[toMuteId] = unmuteTime;
+
+      // Auto-unmute (non persistente su riavvio)
+      setTimeout(async () => {
+        try {
+          initGroup(chatId);
+          const gg = groupData[chatId] || { mutedUsers: [], muteTime: {} };
+          const idx = gg.mutedUsers.indexOf(toMuteId);
+          if (idx !== -1) {
+            gg.mutedUsers.splice(idx, 1);
+            if (gg.muteTime && gg.muteTime[toMuteId]) delete gg.muteTime[toMuteId];
+            saveData();
+            const contactSend = await client.getContactById(toMuteId);
+            await client.sendMessage(chatId, `🔊 *${contactSend.pushname || contactSend.number}* è stato automaticamente smutato!`, {
+              mentions: [contactSend]
             });
+          }
+        } catch (err) {
+          console.error('Errore unmute automatico:', err && err.stack ? err.stack : err);
         }
+      }, muteMinutes * 60 * 1000);
 
-        g.mutedUsers.push(toMuteId);
-
-        let responseText = '';
-        let unmuteTime = null;
-
-        if (muteMinutes > 0) {
-            unmuteTime = Date.now() + (muteMinutes * 60 * 1000);
-            if (!g.muteTime) g.muteTime = {};
-            g.muteTime[toMuteId] = unmuteTime;
-
-            // Auto-unmute (nota: setTimeout non persiste fra riavvii; se vuoi persistenza usa controllo periodico)
-            setTimeout(async () => {
-                try {
-                    // ricarica g per evitare problemi con closure nel lungo periodo
-                    initGroup(chat.id._serialized);
-                    const gg = groupData[chat.id._serialized];
-                    const idx = gg.mutedUsers.indexOf(toMuteId);
-                    if (idx !== -1) {
-                        gg.mutedUsers.splice(idx, 1);
-                        delete gg.muteTime[toMuteId];
-                        saveData();
-                        const contactSend = await client.getContactById(toMuteId);
-                        await client.sendMessage(chat.id._serialized, `🔊 *${contactSend.pushname || contactSend.number}* è stato automaticamente smutato!`, {
-                          mentions: [contactSend]
-                        });
-                    }
-                } catch (err) {
-                    console.error('Errore unmute automatico:', err);
-                }
-            }, muteMinutes * 60 * 1000);
-
-            responseText = `
+      responseText = `
 ╔═══════════════════════╗
 ║  🔇 *UTENTE MUTATO*   ║
 ╚═══════════════════════╝
@@ -1289,8 +1311,8 @@ if (command === 'muta' || command === 'mute') {
 ━━━━━━━━━━━━━━━━━━━━━
 ⚠️ Tutti i suoi messaggi verranno eliminati automaticamente.
 🔊 Sarà smutato automaticamente alla scadenza.`;
-        } else {
-            responseText = `
+    } else {
+      responseText = `
 ╔═══════════════════════╗
 ║  🔇 *UTENTE MUTATO*   ║
 ╚═══════════════════════╝
@@ -1301,53 +1323,52 @@ if (command === 'muta' || command === 'mute') {
 ━━━━━━━━━━━━━━━━━━━━━
 ⚠️ Tutti i suoi messaggi verranno eliminati automaticamente.
 💡 Usa \`.smuta @utente\` per rimuovere il mute.`;
-        }
-
-        saveData();
-        // rispondi taggando
-        await msg.reply(responseText, { mentions: [targetContact] });
-
-        console.log(`[MUTE] ${toMuteName} mutato per ${muteMinutes} minuti da ${msg.author}`);
-    } catch (err) {
-        console.error('Errore muta:', err);
-        await msg.reply('❌ Errore durante il mute.');
     }
+
+    saveData();
+
+    // invia con mentions usando chat.sendMessage (più affidabile per i tag)
+    await localChat.sendMessage(responseText, { mentions: [targetContact] });
+
+    console.log(`[MUTE] ${toMuteName} mutato per ${muteMinutes} minuti da ${msg.author}`);
+  } catch (err) {
+    console.error('Errore muta:', err && err.stack ? err.stack : err);
+    // invia messaggio d'errore più descrittivo (puoi rimuovere err.message se non vuoi esporre info)
+    await (chat || msg).reply(`❌ Errore durante il mute. Errore: ${err && err.message ? err.message : 'sconosciuto'}`);
+  }
 }
 
 // ========== SMUTA ==========
-else if (command === 'smuta' || command === 'unmute') {
-    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+if (command === 'smuta' || command === 'unmute') {
+  if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+  if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
 
-    try {
-        // usa l'helper (getTargetFromMsg) per supportare mention o reply
-        const targetContact = await getTargetFromMsg(msg);
-        if (!targetContact) {
-            return msg.reply('⚠️ Menziona un utente o rispondi al suo messaggio! Uso: `.smuta @utente`');
-        }
+  const localChat = chat || (await msg.getChat());
 
-        const toUnmuteId = targetContact.id._serialized;
-        const toUnmuteName = await getUserDisplayName(toUnmuteId, chat);
+  try {
+    const targetContact = await getTargetFromMsg(msg);
+    if (!targetContact) {
+      return msg.reply('⚠️ Menziona un utente o rispondi al suo messaggio! Uso: `.smuta @utente`');
+    }
 
-        initGroup(chat.id._serialized);
-        const g = groupData[chat.id._serialized] || { mutedUsers: [], muteTime: {} };
+    const toUnmuteId = targetContact.id._serialized;
+    const toUnmuteName = await getUserDisplayName(toUnmuteId, localChat);
 
-        const idx = g.mutedUsers.indexOf(toUnmuteId);
+    const chatId = localChat.id._serialized || localChat.id;
+    const g = ensureGroupData(chatId);
 
-        if (idx === -1) {
-            // rispondi taggando comunque per chiarezza
-            return msg.reply(`⚠️ *${toUnmuteName}* non è mutato!`, { mentions: [targetContact] });
-        }
+    const idx = g.mutedUsers.indexOf(toUnmuteId);
 
-        // rimuovi dal vettore dei mutati
-        g.mutedUsers.splice(idx, 1);
-        if (g.muteTime && g.muteTime[toUnmuteId]) {
-            delete g.muteTime[toUnmuteId];
-        }
+    if (idx === -1) {
+      return localChat.sendMessage(`⚠️ *${toUnmuteName}* non è mutato!`, { mentions: [targetContact] });
+    }
 
-        saveData();
+    g.mutedUsers.splice(idx, 1);
+    if (g.muteTime && g.muteTime[toUnmuteId]) delete g.muteTime[toUnmuteId];
 
-        const responseText = `╔═══════════════════════╗
+    saveData();
+
+    const responseText = `╔═══════════════════════╗
 ║  🔊 *UTENTE SMUTATO*  ║
 ╚═══════════════════════╝
 
@@ -1357,16 +1378,15 @@ else if (command === 'smuta' || command === 'unmute') {
 ━━━━━━━━━━━━━━━━━━━━━
 Il mute è stato rimosso con successo!`;
 
-        // rispondi taggando l'utente
-        await msg.reply(responseText, { mentions: [targetContact] });
+    await localChat.sendMessage(responseText, { mentions: [targetContact] });
 
-        console.log(`[UNMUTE] ${toUnmuteName} smutato da ${msg.author}`);
-
-    } catch (err) {
-        console.error('Errore smuta:', err);
-        await msg.reply('❌ Errore durante lo smute.');
-    }
+    console.log(`[UNMUTE] ${toUnmuteName} smutato da ${msg.author}`);
+  } catch (err) {
+    console.error('Errore smuta:', err && err.stack ? err.stack : err);
+    await (chat || msg).reply(`❌ Errore durante lo smute. Errore: ${err && err.message ? err.message : 'sconosciuto'}`);
+  }
 }
+
 
 
 // ========== WARN ==========
@@ -3072,46 +3092,66 @@ il nuovo link di invito!
 
     // ========== VISUAL MODE ==========
 else if (command === 'visual') {
-    if (!isGroup) {
-        return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
-    }
-    
-    if (!await isAdmin(msg, chat)) {
-        return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    }
-    
+  try {
+    if (!isGroup) return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+    // Recupera il contact dell'admin che ha lanciato il comando (msg.author esiste nei gruppi)
+    const adminId = msg.author || msg.from;
+    const adminContact = await client.getContactById(adminId);
+
+    // Assicurati che i dati del gruppo esistano
+    initGroup(chat.id._serialized);
+    const g = groupData[chat.id._serialized] || (groupData[chat.id._serialized] = { visualMode: false });
+
     const action = args[0]?.toLowerCase();
-    
+
+    // testo da usare per il tag visibile (es. numero senza @c.us)
+    const displayTag = adminContact.number || adminContact.id._serialized.split('@')[0];
+
+    // se action non valida -> mostra uso + stato corrente (taggando l'admin)
     if (!action || !['on', 'off'].includes(action)) {
-        return msg.reply(
-            '⚠️ *Uso comando:*\n\n' +
-            '💡 Attiva/disattiva modalità visual\n\n' +
-            '📝 *Esempio:*\n' +
-            '• `.visual on` - Attiva (solo foto 1 visual)\n' +
-            '• `.visual off` - Disattiva\n\n' +
-            '📊 *Stato attuale:* ' + (groupInfo.visualMode ? '✅ ON' : '❌ OFF')
-        );
+      const stato = g.visualMode ? '✅ ON' : '❌ OFF';
+      return msg.reply(
+        '⚠️ *Uso comando:*\n\n' +
+        '💡 Attiva/disattiva modalità visual\n\n' +
+        '📝 *Esempio:*\n' +
+        '• `.visual on` - Attiva (solo foto 1 visual)\n' +
+        '• `.visual off` - Disattiva\n\n' +
+        '📊 *Stato attuale:* ' + stato,
+        { mentions: [adminContact] }
+      );
     }
-    
-    groupInfo.visualMode = (action === 'on');
+
+    // Imposta la modalità e salva
+    g.visualMode = (action === 'on');
     saveData();
-    
-    const status = groupInfo.visualMode ? 'attivata ✅' : 'disattivata ❌';
-    
+
+    const statusText = g.visualMode
+      ? `⚠️ *Regola attiva:*\nSono permesse SOLO foto/video con visualizzazione singola!\n\n❌ Foto/video "sempre visibili" verranno eliminati automaticamente.`
+      : `✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi tipo di media senza restrizioni.`;
+
     const response = `
 ╔═══════════════════════╗
 ║  👁️ *VISUAL MODE*     ║
 ╚═══════════════════════╝
 
-📸 Modalità visual @@${displayTag}
+📸 Modalità visual ${g.visualMode ? 'attivata' : 'disattivata'} @@${displayTag}
 
-${groupInfo.visualMode ? '⚠️ *Regola attiva:*\nSono permesse SOLO foto/video\ncon visualizzazione singola!\n\n❌ Foto/video "sempre visibili"\nverranno eliminati automaticamente.' : '✅ *Regola disattivata:*\nÈ possibile inviare qualsiasi\ntipo di media senza restrizioni.'}
+${statusText}
 
 ━━━━━━━━━━━━━━━━━━━━━
-👮 Impostato da: ${msg._data.notifyName || 'Admin'}`;
-    
-    await msg.reply(response);
+👮 Impostato da: ${adminContact.pushname || displayTag}`;
+
+    // manda la risposta taggando l'admin
+    await msg.reply(response, { mentions: [adminContact] });
+
+  } catch (err) {
+    console.error('Errore comando visual:', err);
+    await msg.reply('❌ Errore durante l\'esecuzione del comando visual.');
+  }
 }
+
 
         
 
