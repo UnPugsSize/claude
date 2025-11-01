@@ -923,6 +923,28 @@ else if (command === 'moderazione' || command === 'mod') {
 • \`.link\` - Manda link del gruppo
 • \`.revoke\` - Resetta link del gruppo
 
+*👁️ VISUALIZZA RICHIESTE:*
+- \`.richieste\` - Mostra lista completa
+  └─ Vedi tutti i numeri in attesa
+
+*✅ ACCETTAZIONE:*
+- \`.accettarichieste\` - Accetta TUTTE
+  └─ Approva tutte in automatico
+- \`.accetta @numero\` - Accetta singola
+  └─ Esempio: \`.accetta @393123456789\`
+
+*❌ RIFIUTO:*
+- \`.rifiutarichieste\` - Rifiuta TUTTE
+  └─ Richiede conferma per sicurezza
+- \`.confermarifiuto\` - Conferma rifiuto
+  └─ Completa l'operazione di rifiuto
+- \`.rifiuta @numero\` - Rifiuta singola
+  └─ Esempio: \`.rifiuta @393123456789\`
+
+*⚙️ ALTRE AZIONI:*
+- \`.annulla\` - Annulla operazione
+  └─ Cancella rifiuto in attesa
+
 📊 *STATISTICHE:*
 • \`.info\` - Info gruppo
 • \`.mutati\` - Lista mutati
@@ -1122,7 +1144,7 @@ else if (command === 'hidetag') {
     }
 }
 
-// ========== KICK (solo kick, senza ban permanente) ==========
+// ========== KICK (Rimozione utente) ==========
 else if (command === 'kick' || command === 'remove') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
@@ -1131,95 +1153,242 @@ else if (command === 'kick' || command === 'remove') {
     try {
         const targetContact = await getTargetFromMsg(msg);
         if (!targetContact) {
-            return msg.reply(
-                '⚠️ *Menziona un utente o rispondi al suo messaggio!*\n\n' +
-                '💡 *Uso:* `.kick @utente [motivo]`\n' +
-                '📝 *Esempio:* `.kick @mario Spam`'
-            );
+            const helpText = `
+╔═══════════════════════╗
+║   👢 *KICK UTENTE*   ║
+╚═══════════════════════╝
+
+*📝 COME USARE:*
+┌─────────────────────┐
+│ Metodo 1: Menziona
+│ \`.kick @utente [motivo]\`
+│
+│ Metodo 2: Rispondi
+│ Rispondi a un messaggio
+│ con \`.kick [motivo]\`
+└─────────────────────┘
+
+*💡 ESEMPI:*
+- \`.kick @mario Spam\`
+- \`.kick @luca Comportamento scorretto\`
+- Rispondi e scrivi: \`.kick Insulti\`
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ *Nota:* Non puoi rimuovere admin!
+`;
+            return msg.reply(helpText);
         }
 
         const toKickId = targetContact.id._serialized;
         const toKickNumber = toKickId.split('@')[0];
         const toKickName = await getUserDisplayName(toKickId, chat);
-        const reason = args.slice(1).join(' ') || 'Nessun motivo specificato';
+        const adminName = msg.author ? msg.author.split('@')[0] : msg.from.split('@')[0];
+        
+        // Estrai il motivo (salta @mention se presente)
+        let reason = args.slice(1).join(' ');
+        if (reason.startsWith('@')) {
+            reason = args.slice(2).join(' ');
+        }
+        reason = reason || 'Nessun motivo specificato';
 
         // Verifica partecipante aggiornato
         const freshChat = await client.getChatById(chat.id._serialized);
         const participant = freshChat.participants.find(p => p.id._serialized === toKickId);
 
         if (!participant) {
-            return msg.reply('❌ Utente non trovato nel gruppo!');
-        }
-        if (participant.isAdmin || participant.isSuperAdmin) {
-            return msg.reply('⚠️ Non posso rimuovere un admin! Degradalo prima con `.d @utente`', { mentions: [targetContact] });
+            return msg.reply('❌ *Utente non trovato nel gruppo!*\n\n🔍 Verifica che l\'utente sia ancora membro del gruppo.');
         }
 
+        if (participant.isAdmin || participant.isSuperAdmin) {
+            const adminWarnText = `
+╔═══════════════════════╗
+║  ⚠️ *AZIONE NEGATA*  ║
+╚═══════════════════════╝
+
+*❌ Impossibile rimuovere admin!*
+
+┌─────────────────────┐
+│ 👤 Utente: ${toKickName}
+│ 👑 Ruolo: ${participant.isSuperAdmin ? 'Super Admin' : 'Admin'}
+└─────────────────────┘
+
+*📝 SOLUZIONE:*
+1. Degrada l'utente con:
+   \`.d @${toKickNumber}\`
+2. Poi riprova il kick
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Gli admin devono essere degradati prima!
+`;
+            return msg.reply(adminWarnText, { mentions: [targetContact] });
+        }
+
+        // Rimuovi utente
         await chat.removeParticipants([toKickId]);
 
-        await msg.reply(
-            `╔═══════════════════════╗\n` +
-            `║  👢 *UTENTE RIMOSO*  ║\n` +
-            `╚═══════════════════════╝\n\n` +
-            `👤 *Utente:* ${toKickName}\n` +
-            `📱 *Numero:* ${toKickNumber}\n` +
-            `📝 *Motivo:* ${reason}\n` +
-            `👮 *Admin:* ${msg.author.split('@')[0]}\n\n` +
-            `━━━━━━━━━━━━━━━━━━━━━\n` +
-            `✅ L'utente è stato espulso dal gruppo.`,
-            { mentions: [targetContact] }
-        );
+        // Salva log (se hai sistema di logging)
+        if (typeof logModAction === 'function') {
+            await logModAction(chat.id._serialized, 'KICK', {
+                target: toKickId,
+                targetName: toKickName,
+                moderator: msg.author || msg.from,
+                reason: reason,
+                timestamp: Date.now()
+            });
+        }
 
-        console.log(`[KICK] ${toKickName} rimosso da ${msg.author}`);
+        const kickText = `
+╔═══════════════════════╗
+║  👢 *UTENTE RIMOSSO* ║
+╚═══════════════════════╝
+
+*👤 INFORMAZIONI:*
+┌─────────────────────┐
+│ 🎯 Utente: *${toKickName}*
+│ 📱 Numero: +${toKickNumber}
+│ 
+│ 📝 Motivo:
+│ "${reason}"
+│ 
+│ 👮 Moderatore: @${adminName}
+│ ⏰ Data: ${new Date().toLocaleString('it-IT')}
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ *Azione completata con successo!*
+🚪 L'utente è stato espulso dal gruppo.
+`;
+
+        await msg.reply(kickText, { mentions: [targetContact] });
+
+        console.log(`[KICK] ${toKickName} (${toKickNumber}) rimosso da ${adminName} | Motivo: ${reason}`);
+
     } catch (err) {
         console.error('Errore kick:', err);
-        await msg.reply('❌ Errore durante la rimozione. Verifica che:\n• Il bot sia admin\n• L\'utente non sia admin\n• L\'utente sia nel gruppo');
+        
+        const errorText = `
+╔═══════════════════════╗
+║  ❌ *ERRORE KICK*    ║
+╚═══════════════════════╝
+
+*⚠️ Impossibile rimuovere l'utente*
+
+*🔍 POSSIBILI CAUSE:*
+┌─────────────────────┐
+│ • Il bot non è admin
+│ • L'utente è admin
+│ • L'utente ha lasciato il gruppo
+│ • Errore di connessione
+└─────────────────────┘
+
+*📝 VERIFICA:*
+1. Il bot ha i permessi admin
+2. L'utente non è amministratore
+3. L'utente è ancora nel gruppo
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Riprova o contatta il supporto
+`;
+        
+        await msg.reply(errorText);
     }
 }
 
 
+// ========== HELPER FUNCTIONS ==========
+
 // Helper: ottieni target da mentions o da reply (più robusto)
 async function getTargetFromMsg(msg) {
-  // 1) se ci sono mentions, prendi la prima
-  try {
-    const mentioned = await msg.getMentions();
-    if (mentioned && mentioned.length > 0) return mentioned[0]; // Contact
-  } catch (e) {
-    console.error('getMentions error:', e && e.stack ? e.stack : e);
-  }
-
-  // 2) se il comando è una reply, prendi l'autore del messaggio quotato
-  if (msg.hasQuotedMsg) {
+    // 1) se ci sono mentions, prendi la prima
     try {
-      const quoted = await msg.getQuotedMessage();
-      // estrai l'id autore con più fallback possibili
-      const authorId =
-        quoted.author ||
-        quoted.from ||
-        (quoted._data && (quoted._data.participant || quoted._data.author || quoted._data.from)) ||
-        null;
-
-      if (authorId) {
-        try {
-          const contact = await client.getContactById(authorId);
-          return contact;
-        } catch (err) {
-          console.error('client.getContactById(quoted author) error:', err && err.stack ? err.stack : err);
-        }
-      }
+        const mentioned = await msg.getMentions();
+        if (mentioned && mentioned.length > 0) return mentioned[0]; // Contact
     } catch (e) {
-      console.error('Errore getQuotedMessage:', e && e.stack ? e.stack : e);
+        console.error('getMentions error:', e && e.stack ? e.stack : e);
     }
-  }
 
-  // nessun target
-  return null;
+    // 2) se il comando è una reply, prendi l'autore del messaggio quotato
+    if (msg.hasQuotedMsg) {
+        try {
+            const quoted = await msg.getQuotedMessage();
+            // estrai l'id autore con più fallback possibili
+            const authorId =
+                quoted.author ||
+                quoted.from ||
+                (quoted._data && (quoted._data.participant || quoted._data.author || quoted._data.from)) ||
+                null;
+
+            if (authorId) {
+                try {
+                    const contact = await client.getContactById(authorId);
+                    return contact;
+                } catch (err) {
+                    console.error('client.getContactById(quoted author) error:', err && err.stack ? err.stack : err);
+                }
+            }
+        } catch (e) {
+            console.error('Errore getQuotedMessage:', e && e.stack ? e.stack : e);
+        }
+    }
+
+    // nessun target
+    return null;
+}
+
+// Utility per ottenere nome visualizzato (con fallback)
+async function getUserDisplayName(userId, chat) {
+    try {
+        const contact = await client.getContactById(userId);
+        return contact.pushname || contact.name || contact.number || userId.split('@')[0];
+    } catch (err) {
+        // Fallback: cerca nei partecipanti
+        try {
+            const freshChat = await client.getChatById(chat.id._serialized);
+            const participant = freshChat.participants.find(p => p.id._serialized === userId);
+            if (participant) {
+                const pContact = await client.getContactById(participant.id._serialized);
+                return pContact.pushname || pContact.name || pContact.number || userId.split('@')[0];
+            }
+        } catch (e) {
+            console.error('Errore getUserDisplayName:', e);
+        }
+        return userId.split('@')[0];
+    }
 }
 
 // Utility per garantire struttura gruppo
 function ensureGroupData(chatId) {
-  initGroup(chatId); // se hai già questa funzione, la chiamiamo
-  if (!groupData[chatId]) groupData[chatId] = { mutedUsers: [], muteTime: {}, visualMode: false };
-  return groupData[chatId];
+    initGroup(chatId); // se hai già questa funzione, la chiamiamo
+    if (!groupData[chatId]) {
+        groupData[chatId] = {
+            mutedUsers: [],
+            muteTime: {},
+            visualMode: false,
+            antilink: false,
+            antiBot: false,
+            antiSpam: false,
+            slowmode: 0,
+            maxWarns: 3
+        };
+    }
+    return groupData[chatId];
+}
+
+// Funzione opzionale per logging azioni moderazione
+function logModAction(chatId, action, data) {
+    if (!global.modLogs) global.modLogs = {};
+    if (!global.modLogs[chatId]) global.modLogs[chatId] = [];
+    
+    global.modLogs[chatId].push({
+        action,
+        ...data,
+        timestamp: Date.now()
+    });
+    
+    // Mantieni solo ultimi 100 log per gruppo
+    if (global.modLogs[chatId].length > 100) {
+        global.modLogs[chatId] = global.modLogs[chatId].slice(-100);
+    }
 }
 
 // ========== MUTA ==========
@@ -5848,29 +6017,411 @@ else if (command === 'ship') {
 }
  
 
-// ===== GESTIONE RICHIESTE GRUPPO =====
+// ========== GESTIONE RICHIESTE GRUPPO ==========
 
-else if (command === 'accettarichieste') {
+else if (command === 'richieste' || command === 'requests') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
-    
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per gestire le richieste!');
+
     try {
-        autoAcceptRequests[chat.id._serialized] = true;
-        await msg.reply('✅ *Accettazione automatica attivata!*\n\nIl bot accetterà automaticamente tutte le richieste di ingresso nel gruppo.');
+        // Ottieni richieste pendenti
+        const pendingRequests = await chat.getGroupMembershipRequests();
+        
+        if (!pendingRequests || pendingRequests.length === 0) {
+            const noRequestsText = `
+╔═══════════════════════╗
+║ 📋 *RICHIESTE GRUPPO*║
+╚═══════════════════════╝
+
+*✅ Nessuna richiesta pendente*
+
+┌─────────────────────┐
+│ 📊 Stato: Tutto OK
+│ 🔔 Richieste: 0
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Quando arriveranno richieste potrai:
+- \`.accettarichieste\` - Accetta tutte
+- \`.rifiutarichieste\` - Rifiuta tutte
+- \`.richieste\` - Vedi lista
+`;
+            return msg.reply(noRequestsText);
+        }
+
+        // Mostra lista richieste
+        let requestsList = '';
+        pendingRequests.forEach((req, index) => {
+            const number = req.id.user.split('@')[0];
+            requestsList += `│ ${index + 1}. +${number}\n`;
+        });
+
+        const requestsText = `
+╔═══════════════════════╗
+║ 📋 *RICHIESTE GRUPPO*║
+╚═══════════════════════╝
+
+*🔔 ${pendingRequests.length} richiesta/e in attesa*
+
+*👥 LISTA UTENTI:*
+┌─────────────────────┐
+${requestsList}└─────────────────────┘
+
+*⚙️ AZIONI DISPONIBILI:*
+- \`.accettarichieste\` - ✅ Accetta tutte
+- \`.rifiutarichieste\` - ❌ Rifiuta tutte
+- \`.accetta @numero\` - ✅ Accetta singolo
+- \`.rifiuta @numero\` - ❌ Rifiuta singolo
+
+━━━━━━━━━━━━━━━━━━━━━
+⏱️ Scegli un'azione per procedere
+`;
+        
+        await msg.reply(requestsText);
+
     } catch (err) {
-        await msg.reply('❌ Errore nell\'attivare l\'accettazione automatica.');
+        console.error('Errore richieste:', err);
+        await msg.reply('❌ Errore nel recuperare le richieste. Verifica che il gruppo abbia le richieste abilitate.');
     }
 }
 
-else if (command === 'rifiutarichieste') {
+else if (command === 'accettarichieste' || command === 'acceptall') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per accettare richieste!');
     
     try {
-        autoAcceptRequests[chat.id._serialized] = false;
-        await msg.reply('❌ *Accettazione automatica disattivata!*\n\nIl bot non accetterà più automaticamente le richieste di ingresso.');
+        const pendingRequests = await chat.getGroupMembershipRequests();
+        
+        if (!pendingRequests || pendingRequests.length === 0) {
+            return msg.reply('ℹ️ *Nessuna richiesta da accettare*\n\nNon ci sono richieste pendenti in questo momento.');
+        }
+
+        const totalRequests = pendingRequests.length;
+        const adminName = msg.author ? msg.author.split('@')[0] : msg.from.split('@')[0];
+
+        // Mostra messaggio di elaborazione
+        await msg.reply(`⏳ *Elaborazione in corso...*\n\nAccettazione di ${totalRequests} richiesta/e...`);
+
+        let accepted = 0;
+        let failed = 0;
+        const failedNumbers = [];
+
+        // Accetta tutte le richieste
+        for (const request of pendingRequests) {
+            try {
+                await chat.approveGroupMembershipRequests(request.id.user);
+                accepted++;
+                await new Promise(resolve => setTimeout(resolve, 500)); // Delay per evitare rate limit
+            } catch (err) {
+                failed++;
+                const number = request.id.user.split('@')[0];
+                failedNumbers.push(number);
+                console.error(`Errore accettazione ${number}:`, err);
+            }
+        }
+
+        const resultText = `
+╔═══════════════════════╗
+║ ✅ *RICHIESTE ACCETTATE* ║
+╚═══════════════════════╝
+
+*📊 RIEPILOGO:*
+┌─────────────────────┐
+│ ✅ Accettate: *${accepted}/${totalRequests}*
+${failed > 0 ? `│ ❌ Fallite: *${failed}*\n` : ''}│ 👮 Admin: @${adminName}
+│ ⏰ Data: ${new Date().toLocaleString('it-IT')}
+└─────────────────────┘
+${failed > 0 ? `
+*⚠️ RICHIESTE FALLITE:*
+${failedNumbers.map(n => `• +${n}`).join('\n')}
+` : ''}
+━━━━━━━━━━━━━━━━━━━━━
+${accepted > 0 ? '🎉 Gli utenti sono stati aggiunti al gruppo!' : '❌ Nessuna richiesta accettata'}
+`;
+
+        await msg.reply(resultText);
+
+        // Log per console
+        console.log(`[ACCEPT REQUESTS] ${accepted}/${totalRequests} accettate da ${adminName}`);
+
     } catch (err) {
-        await msg.reply('❌ Errore nel disattivare l\'accettazione automatica.');
+        console.error('Errore accettarichieste:', err);
+        
+        const errorText = `
+╔═══════════════════════╗
+║  ❌ *ERRORE*         ║
+╚═══════════════════════╝
+
+*⚠️ Impossibile accettare le richieste*
+
+*🔍 POSSIBILI CAUSE:*
+┌─────────────────────┐
+│ • Il bot non è admin
+│ • Gruppo senza richieste
+│ • Errore di connessione
+│ • Limite di rate WhatsApp
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Riprova tra qualche minuto
+`;
+        
+        await msg.reply(errorText);
+    }
+}
+
+else if (command === 'rifiutarichieste' || command === 'rejectall') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rifiutare richieste!');
+    
+    try {
+        const pendingRequests = await chat.getGroupMembershipRequests();
+        
+        if (!pendingRequests || pendingRequests.length === 0) {
+            return msg.reply('ℹ️ *Nessuna richiesta da rifiutare*\n\nNon ci sono richieste pendenti in questo momento.');
+        }
+
+        const totalRequests = pendingRequests.length;
+        const adminName = msg.author ? msg.author.split('@')[0] : msg.from.split('@')[0];
+
+        // Chiedi conferma
+        const confirmText = `
+╔═══════════════════════╗
+║ ⚠️ *CONFERMA AZIONE* ║
+╚═══════════════════════╝
+
+*❌ Stai per rifiutare ${totalRequests} richiesta/e*
+
+┌─────────────────────┐
+│ 🔔 Richieste: ${totalRequests}
+│ 👮 Admin: @${adminName}
+└─────────────────────┘
+
+*⚠️ ATTENZIONE:*
+Questa azione è irreversibile!
+Gli utenti dovranno richiedere di nuovo l'accesso.
+
+*📝 CONFERMA:*
+Rispondi con:
+- \`.confermarifiuto\` - Per procedere
+- \`.annulla\` - Per annullare
+
+━━━━━━━━━━━━━━━━━━━━━
+⏱️ Hai 30 secondi per confermare
+`;
+
+        await msg.reply(confirmText);
+
+        // Salva stato di conferma
+        if (!global.pendingRejections) global.pendingRejections = {};
+        global.pendingRejections[chat.id._serialized] = {
+            requests: pendingRequests,
+            admin: msg.author || msg.from,
+            timestamp: Date.now()
+        };
+
+        // Timeout dopo 30 secondi
+        setTimeout(() => {
+            if (global.pendingRejections && global.pendingRejections[chat.id._serialized]) {
+                delete global.pendingRejections[chat.id._serialized];
+            }
+        }, 30000);
+
+    } catch (err) {
+        console.error('Errore rifiutarichieste:', err);
+        await msg.reply('❌ Errore nel recuperare le richieste. Verifica che il gruppo abbia le richieste abilitate.');
+    }
+}
+
+else if (command === 'confermarifiuto') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+
+    const pending = global.pendingRejections?.[chat.id._serialized];
+    
+    if (!pending) {
+        return msg.reply('❌ *Nessuna richiesta di rifiuto pendente*\n\nUsa prima `.rifiutarichieste` per iniziare.');
+    }
+
+    try {
+        const totalRequests = pending.requests.length;
+        const adminName = msg.author ? msg.author.split('@')[0] : msg.from.split('@')[0];
+
+        // Mostra messaggio di elaborazione
+        await msg.reply(`⏳ *Elaborazione in corso...*\n\nRifiuto di ${totalRequests} richiesta/e...`);
+
+        let rejected = 0;
+        let failed = 0;
+        const failedNumbers = [];
+
+        // Rifiuta tutte le richieste
+        for (const request of pending.requests) {
+            try {
+                await chat.rejectGroupMembershipRequests(request.id.user);
+                rejected++;
+                await new Promise(resolve => setTimeout(resolve, 500)); // Delay per evitare rate limit
+            } catch (err) {
+                failed++;
+                const number = request.id.user.split('@')[0];
+                failedNumbers.push(number);
+                console.error(`Errore rifiuto ${number}:`, err);
+            }
+        }
+
+        // Pulisci stato pendente
+        delete global.pendingRejections[chat.id._serialized];
+
+        const resultText = `
+╔═══════════════════════╗
+║ ❌ *RICHIESTE RIFIUTATE* ║
+╚═══════════════════════╝
+
+*📊 RIEPILOGO:*
+┌─────────────────────┐
+│ ❌ Rifiutate: *${rejected}/${totalRequests}*
+${failed > 0 ? `│ ⚠️ Fallite: *${failed}*\n` : ''}│ 👮 Admin: @${adminName}
+│ ⏰ Data: ${new Date().toLocaleString('it-IT')}
+└─────────────────────┘
+${failed > 0 ? `
+*⚠️ RICHIESTE NON RIFIUTATE:*
+${failedNumbers.map(n => `• +${n}`).join('\n')}
+` : ''}
+━━━━━━━━━━━━━━━━━━━━━
+${rejected > 0 ? '✅ Le richieste sono state rifiutate!' : '❌ Nessuna richiesta rifiutata'}
+`;
+
+        await msg.reply(resultText);
+
+        // Log per console
+        console.log(`[REJECT REQUESTS] ${rejected}/${totalRequests} rifiutate da ${adminName}`);
+
+    } catch (err) {
+        console.error('Errore confermarifiuto:', err);
+        
+        const errorText = `
+╔═══════════════════════╗
+║  ❌ *ERRORE*         ║
+╚═══════════════════════╝
+
+*⚠️ Impossibile rifiutare le richieste*
+
+*🔍 POSSIBILI CAUSE:*
+┌─────────────────────┐
+│ • Il bot non è admin
+│ • Richieste già processate
+│ • Errore di connessione
+│ • Limite di rate WhatsApp
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Riprova tra qualche minuto
+`;
+        
+        await msg.reply(errorText);
+    }
+}
+
+else if (command === 'annulla') {
+    if (!isGroup) return;
+    
+    const pending = global.pendingRejections?.[chat.id._serialized];
+    
+    if (!pending) {
+        return; // Ignora se non c'è nulla da annullare
+    }
+
+    delete global.pendingRejections[chat.id._serialized];
+    await msg.reply('✅ *Operazione annullata*\n\nLe richieste non sono state rifiutate.');
+}
+
+// ========== GESTIONE RICHIESTE SINGOLE ==========
+
+else if (command === 'accetta' || command === 'approve') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per accettare richieste!');
+
+    try {
+        const number = args[0]?.replace(/[^0-9]/g, '');
+        
+        if (!number) {
+            return msg.reply(
+                '⚠️ *Specifica il numero da accettare!*\n\n' +
+                '💡 *Uso:* `.accetta @numero` o `.accetta +39123456789`\n' +
+                '📝 *Esempio:* `.accetta @393123456789`'
+            );
+        }
+
+        const userId = number + '@c.us';
+        await chat.approveGroupMembershipRequests(userId);
+
+        const successText = `
+╔═══════════════════════╗
+║ ✅ *RICHIESTA ACCETTATA* ║
+╚═══════════════════════╝
+
+*👤 UTENTE AGGIUNTO:*
+┌─────────────────────┐
+│ 📱 Numero: +${number}
+│ ✅ Stato: Accettato
+│ ⏰ Data: ${new Date().toLocaleString('it-IT')}
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+🎉 L'utente è stato aggiunto al gruppo!
+`;
+
+        await msg.reply(successText);
+
+    } catch (err) {
+        console.error('Errore accetta:', err);
+        await msg.reply('❌ Errore nell\'accettare la richiesta. Verifica che il numero sia corretto e abbia una richiesta pendente.');
+    }
+}
+
+else if (command === 'rifiuta' || command === 'reject') {
+    if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
+    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
+    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin per rifiutare richieste!');
+
+    try {
+        const number = args[0]?.replace(/[^0-9]/g, '');
+        
+        if (!number) {
+            return msg.reply(
+                '⚠️ *Specifica il numero da rifiutare!*\n\n' +
+                '💡 *Uso:* `.rifiuta @numero` o `.rifiuta +39123456789`\n' +
+                '📝 *Esempio:* `.rifiuta @393123456789`'
+            );
+        }
+
+        const userId = number + '@c.us';
+        await chat.rejectGroupMembershipRequests(userId);
+
+        const successText = `
+╔═══════════════════════╗
+║ ❌ *RICHIESTA RIFIUTATA* ║
+╚═══════════════════════╝
+
+*👤 UTENTE RIFIUTATO:*
+┌─────────────────────┐
+│ 📱 Numero: +${number}
+│ ❌ Stato: Rifiutato
+│ ⏰ Data: ${new Date().toLocaleString('it-IT')}
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+✅ La richiesta è stata rifiutata!
+`;
+
+        await msg.reply(successText);
+
+    } catch (err) {
+        console.error('Errore rifiuta:', err);
+        await msg.reply('❌ Errore nel rifiutare la richiesta. Verifica che il numero sia corretto e abbia una richiesta pendente.');
     }
 }
 
