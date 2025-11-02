@@ -646,34 +646,80 @@ const cmdArgs = withoutPrefix.split(/\s+/);
 
 
 
-        // Anti-link
-        if (groupInfo?.antilink && /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(msg.body || '')) {
+        // ========== ANTI-LINK (CORRETTO) ==========
+if (groupInfo?.antilink) {
+    // Verifica che msg.body esista ed è una stringa
+    const messageText = (typeof msg.body === 'string') ? msg.body : '';
+    
+    // Test per link (case insensitive)
+    const hasLink = /https?:\/\/|www\.|wa\.me|whatsapp\.com/i.test(messageText);
+    
+    if (hasLink) {
+        if (!(await isAdmin(msg, chat))) {
+            try { 
+                await msg.delete(true); 
+                
+                const antilinkText = `
+╔═══════════════════════╗
+║  🔗 *ANTILINK*        ║
+╚═══════════════════════╝
+
+❌ *Link eliminato!*
+
+⚠️ I link non sono permessi
+in questo gruppo.
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Rispetta le regole!`;
+                
+                await msg.reply(antilinkText);
+                return;
+            } catch (err) {
+                console.error('Errore antilink:', err);
+            }
+        }
+    }
+}
+
+// ========== ANTI-BOT (CORRETTO) ==========
+if (groupInfo?.antiBot && msg.fromMe === false) {
+    try {
+        const contact = await msg.getContact();
+        
+        // Verifica se è un bot (non è contatto WhatsApp normale O è account business)
+        const isBot = contact.isWAContact === false || contact.isBusiness === true;
+        
+        if (isBot) {
             if (!(await isAdmin(msg, chat))) {
-                try { 
-                    await msg.delete(true); 
-                    await msg.reply('⚠️🔗 *ANTILINK ATTIVO*\n\nI link non sono permessi in questo gruppo!');
+                try {
+                    // Rimuovi il partecipante
+                    const userId = msg.author || msg.from;
+                    await chat.removeParticipants([userId]);
+                    
+                    const antibotText = `
+╔═══════════════════════╗
+║  🤖 *ANTI-BOT*        ║
+╚═══════════════════════╝
+
+❌ *Bot rilevato e rimosso!*
+
+⚠️ Questo gruppo non permette
+account bot o business.
+
+━━━━━━━━━━━━━━━━━━━━━
+🛡️ Protezione attiva`;
+                    
+                    await msg.reply(antibotText);
                     return;
                 } catch (err) {
-                    console.log('Errore antilink:', err);
+                    console.error('Errore rimozione bot:', err);
                 }
             }
         }
-
-        // Anti-bot
-        if (groupInfo?.antiBot && msg.fromMe === false) {
-            const contact = await msg.getContact();
-            if (contact.isWAContact === false || contact.isBusiness) {
-                if (!(await isAdmin(msg, chat))) {
-                    try {
-                        await chat.removeParticipants([msg.author]);
-                        await msg.reply('🤖❌ Bot rilevato e rimosso automaticamente!');
-                        return;
-                    } catch (err) {
-                        console.log('Errore antibot:', err);
-                    }
-                }
-            }
-        }
+    } catch (err) {
+        console.error('Errore antibot controllo:', err);
+    }
+}
 
         // Slowmode
         if (groupInfo?.slowmode > 0) {
@@ -894,6 +940,8 @@ else if (command === 'moderazione' || command === 'mod') {
 • \`.admins\` - Lista admin
 • \`.promote-all\` - Promuovi tutti
 • \`.demote-all\` - Degrada tutti
+• \`.admininfo / .infoadmin - Mostra informazioni dettagliate su un admin (ire gay)
+
 
 🛡️ *PROTEZIONE:*
 • \`.antilink on/off\` - Blocca link
@@ -1144,7 +1192,7 @@ else if (command === 'hidetag') {
     }
 }
 
-// ========== KICK (Rimozione utente) ==========
+// ========== KICK COMMAND (VERSIONE CORRETTA) ==========
 else if (command === 'kick' || command === 'remove') {
     if (!isGroup) return msg.reply('⚠️ Comando disponibile solo nei gruppi!');
     if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo gli admin possono usare questo comando!');
@@ -1174,8 +1222,7 @@ else if (command === 'kick' || command === 'remove') {
 - Rispondi e scrivi: \`.kick Insulti\`
 
 ━━━━━━━━━━━━━━━━━━━━━
-⚠️ *Nota:* Non puoi rimuovere admin!
-`;
+⚠️ *Nota:* Non puoi rimuovere admin!`;
             return msg.reply(helpText);
         }
 
@@ -1214,12 +1261,11 @@ else if (command === 'kick' || command === 'remove') {
 
 *📝 SOLUZIONE:*
 1. Degrada l'utente con:
-   \`.d @${toKickNumber}\`
+   \`.demote @${toKickNumber}\`
 2. Poi riprova il kick
 
 ━━━━━━━━━━━━━━━━━━━━━
-💡 Gli admin devono essere degradati prima!
-`;
+💡 Gli admin devono essere degradati prima!`;
             return msg.reply(adminWarnText, { mentions: [targetContact] });
         }
 
@@ -1256,8 +1302,7 @@ else if (command === 'kick' || command === 'remove') {
 
 ━━━━━━━━━━━━━━━━━━━━━
 ✅ *Azione completata con successo!*
-🚪 L'utente è stato espulso dal gruppo.
-`;
+🚪 L'utente è stato espulso dal gruppo.`;
 
         await msg.reply(kickText, { mentions: [targetContact] });
 
@@ -1287,31 +1332,28 @@ else if (command === 'kick' || command === 'remove') {
 3. L'utente è ancora nel gruppo
 
 ━━━━━━━━━━━━━━━━━━━━━
-💡 Riprova o contatta il supporto
-`;
+💡 Riprova o contatta il supporto`;
         
         await msg.reply(errorText);
     }
 }
 
+// ========== HELPER FUNCTIONS (CORRETTE) ==========
 
-// ========== HELPER FUNCTIONS ==========
-
-// Helper: ottieni target da mentions o da reply (più robusto)
+// Helper: ottieni target da mentions o da reply (versione robusta)
 async function getTargetFromMsg(msg) {
-    // 1) se ci sono mentions, prendi la prima
+    // 1) Controlla mentions
     try {
         const mentioned = await msg.getMentions();
-        if (mentioned && mentioned.length > 0) return mentioned[0]; // Contact
+        if (mentioned && mentioned.length > 0) return mentioned[0];
     } catch (e) {
-        console.error('getMentions error:', e && e.stack ? e.stack : e);
+        console.error('getMentions error:', e);
     }
 
-    // 2) se il comando è una reply, prendi l'autore del messaggio quotato
+    // 2) Controlla se è una reply
     if (msg.hasQuotedMsg) {
         try {
             const quoted = await msg.getQuotedMessage();
-            // estrai l'id autore con più fallback possibili
             const authorId =
                 quoted.author ||
                 quoted.from ||
@@ -1323,25 +1365,23 @@ async function getTargetFromMsg(msg) {
                     const contact = await client.getContactById(authorId);
                     return contact;
                 } catch (err) {
-                    console.error('client.getContactById(quoted author) error:', err && err.stack ? err.stack : err);
+                    console.error('getContactById error:', err);
                 }
             }
         } catch (e) {
-            console.error('Errore getQuotedMessage:', e && e.stack ? e.stack : e);
+            console.error('getQuotedMessage error:', e);
         }
     }
 
-    // nessun target
     return null;
 }
 
-// Utility per ottenere nome visualizzato (con fallback)
+// Utility per ottenere nome visualizzato
 async function getUserDisplayName(userId, chat) {
     try {
         const contact = await client.getContactById(userId);
         return contact.pushname || contact.name || contact.number || userId.split('@')[0];
     } catch (err) {
-        // Fallback: cerca nei partecipanti
         try {
             const freshChat = await client.getChatById(chat.id._serialized);
             const participant = freshChat.participants.find(p => p.id._serialized === userId);
@@ -1350,31 +1390,13 @@ async function getUserDisplayName(userId, chat) {
                 return pContact.pushname || pContact.name || pContact.number || userId.split('@')[0];
             }
         } catch (e) {
-            console.error('Errore getUserDisplayName:', e);
+            console.error('getUserDisplayName error:', e);
         }
         return userId.split('@')[0];
     }
 }
 
-// Utility per garantire struttura gruppo
-function ensureGroupData(chatId) {
-    initGroup(chatId); // se hai già questa funzione, la chiamiamo
-    if (!groupData[chatId]) {
-        groupData[chatId] = {
-            mutedUsers: [],
-            muteTime: {},
-            visualMode: false,
-            antilink: false,
-            antiBot: false,
-            antiSpam: false,
-            slowmode: 0,
-            maxWarns: 3
-        };
-    }
-    return groupData[chatId];
-}
-
-// Funzione opzionale per logging azioni moderazione
+// Logging azioni moderazione
 function logModAction(chatId, action, data) {
     if (!global.modLogs) global.modLogs = {};
     if (!global.modLogs[chatId]) global.modLogs[chatId] = [];
@@ -2172,31 +2194,75 @@ else if (command === 'r' || command === 'delete') {
     }
 }
 
-// ========== PROMUOVI ==========
+// ========== PROMUOVI (DESIGN AVANZATO) ==========
 else if (command === 'p' || command === 'promuovi' || command === 'promote') {
-    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
+    if (!isGroup) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  ⚠️ *ERRORE GRUPPO*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Questo comando funziona\n' +
+            '   solo nei gruppi!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Entra in un gruppo e riprova'
+        );
+    }
+    
+    if (!await isAdmin(msg, chat)) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  🔒 *ACCESSO NEGATO*  ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Solo gli amministratori\n' +
+            '   possono promuovere utenti\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Richiedi i permessi admin'
+        );
+    }
+    
+    if (!await isBotAdmin(chat)) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  🤖 *BOT NON ADMIN*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Il bot deve essere admin\n' +
+            '   per promuovere utenti!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Rendi il bot amministratore'
+        );
+    }
     
     const mentioned = await msg.getMentions();
     if (!mentioned || mentioned.length === 0) {
         return msg.reply(
-            '⚠️ *Menziona almeno un utente!*\n\n' +
-            '💡 *Uso:* `.p @utente1 @utente2 ...`\n' +
-            '📝 *Esempio:* `.p @mario @luigi`'
+            '╔═══════════════════════╗\n' +
+            '║  👑 *PROMUOVI ADMIN*  ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '*📝 COME USARE:*\n' +
+            '┌─────────────────────┐\n' +
+            '│ `.p @utente1 @utente2`\n' +
+            '│ `.promuovi @mario`\n' +
+            '│ `.promote @luca @sara`\n' +
+            '└─────────────────────┘\n\n' +
+            '*💡 ESEMPI:*\n' +
+            '• `.p @mario` - Promuove Mario\n' +
+            '• `.p @luca @sara` - Promuove entrambi\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '⚠️ *Menziona almeno un utente!*'
         );
     }
     
     const promoted = [];
     const failed = [];
     const botId = client.info?.wid?._serialized;
+    const adminName = msg._data.notifyName || 'Admin';
     
     for (const u of mentioned) {
         const uid = u.id._serialized;
         const display = await getUserDisplayName(uid, chat);
         
         if (botId && uid === botId) {
-            failed.push({ display, reason: 'Bot già admin' });
+            failed.push({ display, reason: '🤖 Bot già admin', emoji: '⚠️' });
             continue;
         }
         
@@ -2205,53 +2271,124 @@ else if (command === 'p' || command === 'promuovi' || command === 'promote') {
             promoted.push(display);
         } catch (err) {
             console.error(`Errore promozione ${display}:`, err);
-            failed.push({ display, reason: err.message || 'Errore sconosciuto' });
+            const errorMsg = err.message || 'Errore sconosciuto';
+            failed.push({ 
+                display, 
+                reason: errorMsg.includes('admin') ? 'Già admin' : 'Errore promozione',
+                emoji: '❌'
+            });
         }
     }
     
-    let reply = `╔═══════════════════════╗
-║  👑 *PROMOZIONI*      ║
-╚═══════════════════════╝\n\n`;
+    let reply = '╔═══════════════════════╗\n' +
+                '║  👑 *PROMOZIONI*      ║\n' +
+                '╚═══════════════════════╝\n\n';
     
     if (promoted.length > 0) {
-        reply += `✅ *Promossi:* ${promoted.length}\n`;
-        promoted.forEach(n => reply += `• ${n}\n`);
-        reply += '\n';
+        reply += `✅ *PROMOSSI CON SUCCESSO*\n`;
+        reply += `┌─────────────────────┐\n`;
+        promoted.forEach((n, i) => {
+            reply += `│ ${i + 1}. 👤 ${n}\n`;
+        });
+        reply += `└─────────────────────┘\n`;
+        reply += `📊 *Totale:* ${promoted.length}\n\n`;
     }
     
     if (failed.length > 0) {
-        reply += `⚠️ *Non promossi:* ${failed.length}\n`;
-        failed.forEach(f => reply += `• ${f.display} — ${f.reason}\n`);
+        reply += `⚠️ *NON PROMOSSI*\n`;
+        reply += `┌─────────────────────┐\n`;
+        failed.forEach((f, i) => {
+            reply += `│ ${f.emoji} ${f.display}\n`;
+            reply += `│    └─ ${f.reason}\n`;
+        });
+        reply += `└─────────────────────┘\n`;
+        reply += `📊 *Falliti:* ${failed.length}\n\n`;
     }
     
-    await msg.reply(reply);
+    reply += '━━━━━━━━━━━━━━━━━━━━━\n';
+    reply += `👮 *Operazione di:* ${adminName}\n`;
+    reply += `⏰ *Data:* ${new Date().toLocaleString('it-IT', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit' 
+    })}`;
+    
+    await msg.reply(reply, { mentions: mentioned });
 }
 
-// ========== DEGRADA ==========
+// ========== DEGRADA (DESIGN AVANZATO) ==========
 else if (command === 'd' || command === 'degrada' || command === 'demote') {
-    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-    if (!await isAdmin(msg, chat)) return msg.reply('⚠️ Solo admin!');
-    if (!await isBotAdmin(chat)) return msg.reply('⚠️ Il bot deve essere admin!');
+    if (!isGroup) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  ⚠️ *ERRORE GRUPPO*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Questo comando funziona\n' +
+            '   solo nei gruppi!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Entra in un gruppo e riprova'
+        );
+    }
+    
+    if (!await isAdmin(msg, chat)) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  🔒 *ACCESSO NEGATO*  ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Solo gli amministratori\n' +
+            '   possono degradare utenti\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Richiedi i permessi admin'
+        );
+    }
+    
+    if (!await isBotAdmin(chat)) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  🤖 *BOT NON ADMIN*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Il bot deve essere admin\n' +
+            '   per degradare utenti!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Rendi il bot amministratore'
+        );
+    }
     
     const mentioned = await msg.getMentions();
     if (!mentioned || mentioned.length === 0) {
         return msg.reply(
-            '⚠️ *Menziona almeno un utente!*\n\n' +
-            '💡 *Uso:* `.d @utente1 @utente2 ...`\n' +
-            '📝 *Esempio:* `.d @mario @luigi`'
+            '╔═══════════════════════╗\n' +
+            '║  👤 *DEGRADA ADMIN*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '*📝 COME USARE:*\n' +
+            '┌─────────────────────┐\n' +
+            '│ `.d @utente1 @utente2`\n' +
+            '│ `.degrada @mario`\n' +
+            '│ `.demote @luca @sara`\n' +
+            '└─────────────────────┘\n\n' +
+            '*💡 ESEMPI:*\n' +
+            '• `.d @mario` - Degrada Mario\n' +
+            '• `.d @luca @sara` - Degrada entrambi\n\n' +
+            '*⚠️ ATTENZIONE:*\n' +
+            'Rimuove i permessi admin!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '⚠️ *Menziona almeno un utente!*'
         );
     }
     
     const demoted = [];
     const failed = [];
     const botId = client.info?.wid?._serialized;
+    const adminName = msg._data.notifyName || 'Admin';
     
     for (const u of mentioned) {
         const uid = u.id._serialized;
         const display = await getUserDisplayName(uid, chat);
         
         if (botId && uid === botId) {
-            failed.push({ display, reason: 'Non posso degradare me stesso' });
+            failed.push({ display, reason: '🤖 Non posso degradare me stesso', emoji: '⚠️' });
             continue;
         }
         
@@ -2260,48 +2397,213 @@ else if (command === 'd' || command === 'degrada' || command === 'demote') {
             demoted.push(display);
         } catch (err) {
             console.error(`Errore degradazione ${display}:`, err);
-            failed.push({ display, reason: err.message || 'Errore sconosciuto' });
+            const errorMsg = err.message || 'Errore sconosciuto';
+            failed.push({ 
+                display, 
+                reason: errorMsg.includes('admin') ? 'Non è admin' : 'Errore degradazione',
+                emoji: '❌'
+            });
         }
     }
     
-    let reply = `╔═══════════════════════╗
-║  👤 *DEGRADAZIONI*    ║
-╚═══════════════════════╝\n\n`;
+    let reply = '╔═══════════════════════╗\n' +
+                '║  👤 *DEGRADAZIONI*    ║\n' +
+                '╚═══════════════════════╝\n\n';
     
     if (demoted.length > 0) {
-        reply += `✅ *Degradati:* ${demoted.length}\n`;
-        demoted.forEach(n => reply += `• ${n}\n`);
-        reply += '\n';
+        reply += `✅ *DEGRADATI CON SUCCESSO*\n`;
+        reply += `┌─────────────────────┐\n`;
+        demoted.forEach((n, i) => {
+            reply += `│ ${i + 1}. 👤 ${n}\n`;
+        });
+        reply += `└─────────────────────┘\n`;
+        reply += `📊 *Totale:* ${demoted.length}\n\n`;
     }
     
     if (failed.length > 0) {
-        reply += `⚠️ *Non degradati:* ${failed.length}\n`;
-        failed.forEach(f => reply += `• ${f.display} — ${f.reason}\n`);
+        reply += `⚠️ *NON DEGRADATI*\n`;
+        reply += `┌─────────────────────┐\n`;
+        failed.forEach((f, i) => {
+            reply += `│ ${f.emoji} ${f.display}\n`;
+            reply += `│    └─ ${f.reason}\n`;
+        });
+        reply += `└─────────────────────┘\n`;
+        reply += `📊 *Falliti:* ${failed.length}\n\n`;
     }
     
-    await msg.reply(reply);
+    reply += '━━━━━━━━━━━━━━━━━━━━━\n';
+    reply += `👮 *Operazione di:* ${adminName}\n`;
+    reply += `⏰ *Data:* ${new Date().toLocaleString('it-IT', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit' 
+    })}`;
+    
+    await msg.reply(reply, { mentions: mentioned });
 }
 
-// ========== LISTA ADMIN ==========
-else if (command === 'admins') {
-    if (!isGroup) return msg.reply('⚠️ Solo nei gruppi!');
-    
-    const admins = chat.participants.filter(p => p.isAdmin || p.isSuperAdmin);
-    
-    let text = `╔═══════════════════════╗
-║  👑 *LISTA ADMIN*     ║
-╚═══════════════════════╝
-
-📊 *Totale:* ${admins.length}\n\n`;
-    
-    for (let i = 0; i < admins.length; i++) {
-        const admin = admins[i];
-        const name = await getUserDisplayName(admin.id._serialized, chat);
-        const role = admin.isSuperAdmin ? '👑' : '👮';
-        text += `${role} ${i + 1}. ${name}\n`;
+// ========== LISTA ADMIN (DESIGN PREMIUM) ==========
+else if (command === 'admins' || command === 'adminlist' || command === 'listaadmin') {
+    if (!isGroup) {
+        return msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  ⚠️ *ERRORE GRUPPO*   ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '❌ Questo comando funziona\n' +
+            '   solo nei gruppi!\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Entra in un gruppo e riprova'
+        );
     }
     
-    await msg.reply(text);
+    try {
+        // Refresh chat per dati aggiornati
+        const freshChat = await client.getChatById(chat.id._serialized);
+        
+        const superAdmins = freshChat.participants.filter(p => p.isSuperAdmin);
+        const admins = freshChat.participants.filter(p => p.isAdmin && !p.isSuperAdmin);
+        const totalAdmins = superAdmins.length + admins.length;
+        const totalMembers = freshChat.participants.length;
+        
+        let text = '╔═══════════════════════╗\n' +
+                   '║  👑 *LISTA ADMIN*     ║\n' +
+                   '╚═══════════════════════╝\n\n';
+        
+        // Statistiche gruppo
+        text += `📊 *STATISTICHE GRUPPO*\n`;
+        text += `┌─────────────────────┐\n`;
+        text += `│ 👥 Membri: ${totalMembers}\n`;
+        text += `│ 👑 Super Admin: ${superAdmins.length}\n`;
+        text += `│ 👮 Admin: ${admins.length}\n`;
+        text += `│ 📈 Totale Staff: ${totalAdmins}\n`;
+        text += `└─────────────────────┘\n\n`;
+        
+        // Super Amministratori
+        if (superAdmins.length > 0) {
+            text += `👑 *SUPER AMMINISTRATORI*\n`;
+            text += `┌─────────────────────┐\n`;
+            for (let i = 0; i < superAdmins.length; i++) {
+                const admin = superAdmins[i];
+                const name = await getUserDisplayName(admin.id._serialized, freshChat);
+                const number = admin.id._serialized.split('@')[0];
+                text += `│ ${i + 1}. 👑 ${name}\n`;
+                text += `│    └─ +${number}\n`;
+            }
+            text += `└─────────────────────┘\n\n`;
+        }
+        
+        // Amministratori
+        if (admins.length > 0) {
+            text += `👮 *AMMINISTRATORI*\n`;
+            text += `┌─────────────────────┐\n`;
+            for (let i = 0; i < admins.length; i++) {
+                const admin = admins[i];
+                const name = await getUserDisplayName(admin.id._serialized, freshChat);
+                const number = admin.id._serialized.split('@')[0];
+                text += `│ ${i + 1}. 👮 ${name}\n`;
+                text += `│    └─ +${number}\n`;
+            }
+            text += `└─────────────────────┘\n\n`;
+        }
+        
+        // Nessun admin trovato
+        if (totalAdmins === 0) {
+            text += `⚠️ *Nessun amministratore trovato!*\n\n`;
+        }
+        
+        text += '━━━━━━━━━━━━━━━━━━━━━\n';
+        text += `📅 *Aggiornato:* ${new Date().toLocaleString('it-IT', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        })}\n`;
+        text += `🔄 *Comando:* .admins`;
+        
+        await msg.reply(text);
+        
+    } catch (err) {
+        console.error('Errore lista admin:', err);
+        await msg.reply(
+            '╔═══════════════════════╗\n' +
+            '║  ❌ *ERRORE*          ║\n' +
+            '╚═══════════════════════╝\n\n' +
+            '⚠️ Impossibile recuperare\n' +
+            '   la lista amministratori\n\n' +
+            '━━━━━━━━━━━━━━━━━━━━━\n' +
+            '💡 Riprova tra qualche secondo'
+        );
+    }
+}
+
+// ========== INFO ADMIN (COMANDO BONUS) ==========
+else if (command === 'admininfo' || command === 'infoadmin') {
+    if (!isGroup) {
+        return msg.reply('⚠️ Solo nei gruppi!');
+    }
+    
+    const mentioned = await msg.getMentions();
+    let targetId;
+    
+    if (mentioned && mentioned.length > 0) {
+        targetId = mentioned[0].id._serialized;
+    } else if (msg.hasQuotedMsg) {
+        const quoted = await msg.getQuotedMessage();
+        targetId = quoted.author || quoted.from;
+    } else {
+        targetId = msg.author || msg.from;
+    }
+    
+    try {
+        const freshChat = await client.getChatById(chat.id._serialized);
+        const participant = freshChat.participants.find(p => p.id._serialized === targetId);
+        
+        if (!participant) {
+            return msg.reply('❌ Utente non trovato nel gruppo!');
+        }
+        
+        const name = await getUserDisplayName(targetId, freshChat);
+        const number = targetId.split('@')[0];
+        const isAdmin = participant.isAdmin || participant.isSuperAdmin;
+        const role = participant.isSuperAdmin ? 'Super Amministratore' : 
+                     participant.isAdmin ? 'Amministratore' : 
+                     'Membro';
+        const roleEmoji = participant.isSuperAdmin ? '👑' : 
+                         participant.isAdmin ? '👮' : '👤';
+        
+        const infoText = `
+╔═══════════════════════╗
+║  ℹ️ *INFO UTENTE*     ║
+╚═══════════════════════╝
+
+*👤 INFORMAZIONI*
+┌─────────────────────┐
+│ 📛 Nome: ${name}
+│ 📱 Numero: +${number}
+│ ${roleEmoji} Ruolo: ${role}
+│ 🔐 Admin: ${isAdmin ? '✅ Sì' : '❌ No'}
+└─────────────────────┘
+
+*🎯 PERMESSI*
+┌─────────────────────┐
+│ ${isAdmin ? '✅' : '❌'} Promuovere membri
+│ ${isAdmin ? '✅' : '❌'} Degradare admin
+│ ${isAdmin ? '✅' : '❌'} Rimuovere membri
+│ ${isAdmin ? '✅' : '❌'} Modificare info gruppo
+│ ${isAdmin ? '✅' : '❌'} Inviare messaggi (se chiuso)
+└─────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Richiesto da: ${msg._data.notifyName || 'Utente'}`;
+        
+        await msg.reply(infoText);
+        
+    } catch (err) {
+        console.error('Errore info admin:', err);
+        await msg.reply('❌ Errore nel recupero delle informazioni!');
+    }
 }
 
 // ========== LISTA MUTATI ==========
@@ -3259,7 +3561,7 @@ il nuovo link di invito!
     }
 }
 
-    // ========== VISUAL MODE ==========
+    // ========== VISUAL MODE (CORRETTO) ==========
 else if (command === 'visual') {
     if (!isGroup) {
         return msg.reply('⚠️ Questo comando funziona solo nei gruppi!');
@@ -3300,6 +3602,49 @@ ${groupInfo.visualMode ? '⚠️ *Regola attiva:*\nSono permesse SOLO foto/video
 👮 Impostato da: ${msg._data.notifyName || 'Admin'}`;
     
     await msg.reply(response);
+}
+
+// ========== CONTROLLO VISUAL MODE (CORRETTO) ==========
+// Da inserire nel blocco "client.on('message', async (msg) => {"
+// PRIMA del controllo dei comandi
+
+if (isGroup && groupInfo?.visualMode) {
+    const hasMedia = msg.hasMedia;
+    const isViewOnce = msg._data?.isViewOnce === true || msg.type === 'view_once';
+    
+    // Se c'è media ma NON è view once
+    if (hasMedia && !isViewOnce) {
+        // Verifica che non sia un admin
+        if (!(await isAdmin(msg, chat))) {
+            try {
+                await msg.delete(true);
+                
+                const warningText = `
+╔═══════════════════════╗
+║  👁️ *VISUAL MODE*     ║
+╚═══════════════════════╝
+
+❌ *Media eliminato!*
+
+⚠️ *Regola del gruppo:*
+Sono permesse SOLO foto/video
+con visualizzazione singola (1 visual)
+
+📝 *Come inviare correttamente:*
+1. Seleziona foto/video
+2. Tocca l'icona "1" (view once)
+3. Invia il messaggio
+
+━━━━━━━━━━━━━━━━━━━━━
+💡 Rispetta le regole del gruppo!`;
+                
+                await msg.reply(warningText);
+                return; // Blocca elaborazione ulteriore
+            } catch (err) {
+                console.error('Errore eliminazione visual mode:', err);
+            }
+        }
+    }
 }
 
 
@@ -6738,5 +7083,5 @@ else if (command === 'ds') {
 // Avvia il client
 client.initialize();
 
-console.log('🚀 Bot WhatsApp in avvio...');
+console.log('🚀 Bot WhatsApp in avviooooo...');
 
